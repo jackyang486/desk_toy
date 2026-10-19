@@ -45,7 +45,7 @@ static const std::vector<std::string> kEmotionOrder = {
     "loving", "embarrassed", "surprised", "shocked", "thinking", "winking",
     "cool", "relaxed", "delicious", "kissy", "confident", "sleepy", "silly",
     "confused"
-};
+};   
 
 
 
