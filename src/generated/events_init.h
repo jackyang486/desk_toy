@@ -18,15 +18,16 @@ extern "C" {
 
 void events_init(lv_ui *ui);
 
-void events_init_screen(lv_ui *ui);
-void events_init_wifi_win(lv_ui *ui);
-void events_init_home(lv_ui *ui);
-void events_init_photo_win(lv_ui *ui);
-void events_init_music(lv_ui *ui);
-void events_init_robot_win(lv_ui *ui);
-void events_init_setting_win(lv_ui *ui);
-void events_init_radio_win(lv_ui *ui);
-void events_init_online_img_win(lv_ui *ui);
+void events_init_screen_weather(lv_ui *ui);
+void events_init_screen_photo(lv_ui *ui);
+void events_init_screen_wifi(lv_ui *ui);
+void events_init_screen_music(lv_ui *ui);
+void events_init_screen_robot(lv_ui *ui);
+void events_init_screen_setting(lv_ui *ui);
+void events_init_screen_radio(lv_ui *ui);
+void events_init_screen_mouse(lv_ui *ui);
+void events_init_screen_anim(lv_ui *ui);
+void events_init_screen_home(lv_ui *ui);
 
 #ifdef __cplusplus
 }

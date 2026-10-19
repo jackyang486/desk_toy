@@ -24,7 +24,8 @@ Setting& Setting::GetInstance() {
 Setting::Setting()
     : brightness_(DEFAULT_SCREEN_BRIGHTNESS),
       volume_(80),
-      screen_timeout_ms_(DEFAULT_SCREEN_TIMEOUT_MS){
+      screen_timeout_ms_(DEFAULT_SCREEN_TIMEOUT_MS),
+      hasInitial(false){
       LoadSettings();
 }
 
@@ -40,36 +41,38 @@ void Setting::Init() {
 void setting_win_load(SCREEN_LOAD_STAUS status){
   auto& setting = Setting::GetInstance();
   setting.screen_loaded(status);
-
 }
 
 void Setting::screen_loaded(SCREEN_LOAD_STAUS status){
   if(status == LOADED){ 
         // 设置滑块范围
-        lv_slider_set_range(guider_ui.setting_win_slider_bright, MIN_BRIGHTNESS, MAX_BRIGHTNESS);
-        lv_label_set_text(guider_ui.setting_win_label_vol_title,"音量大小");
-        lv_label_set_text(guider_ui.setting_win_label_bright_title,"屏幕亮度");
-        lv_label_set_text(guider_ui.setting_win_label_light_switch_title,"熄屏时间");
-        lv_obj_set_style_text_font(guider_ui.setting_win_label_vol_title, &font_puhui_16_4,  LV_PART_MAIN|LV_STATE_DEFAULT);
-        lv_obj_set_style_text_font(guider_ui.setting_win_label_bright_title, &font_puhui_16_4,  LV_PART_MAIN|LV_STATE_DEFAULT);
-        lv_obj_set_style_text_font(guider_ui.setting_win_label_light_switch_title, &font_puhui_16_4,  LV_PART_MAIN|LV_STATE_DEFAULT);
-        lv_obj_set_style_text_font(guider_ui.setting_win_label_minute, &font_puhui_16_4,  LV_PART_MAIN|LV_STATE_DEFAULT);
+        if(!hasInitial){
+            hasInitial = true;
+            lv_slider_set_range(guider_ui.screen_setting_slider_bright, MIN_BRIGHTNESS, MAX_BRIGHTNESS);
+            lv_label_set_text(guider_ui.screen_setting_label_vol_title,"音量大小");
+            lv_label_set_text(guider_ui.screen_setting_label_bright_title,"屏幕亮度");
+            lv_label_set_text(guider_ui.screen_setting_label_light_switch_title,"熄屏时间");
+            lv_obj_set_style_text_font(guider_ui.screen_setting_label_vol_title, &font_puhui_16_4,  LV_PART_MAIN|LV_STATE_DEFAULT);
+            lv_obj_set_style_text_font(guider_ui.screen_setting_label_bright_title, &font_puhui_16_4,  LV_PART_MAIN|LV_STATE_DEFAULT);
+            lv_obj_set_style_text_font(guider_ui.screen_setting_label_light_switch_title, &font_puhui_16_4,  LV_PART_MAIN|LV_STATE_DEFAULT);
+            lv_obj_set_style_text_font(guider_ui.screen_setting_label_minute, &font_puhui_16_4,  LV_PART_MAIN|LV_STATE_DEFAULT);
 
-        // 设置初始值
-        lv_slider_set_value(guider_ui.setting_win_slider_bright, brightness_, LV_ANIM_OFF);
-        lv_slider_set_value(guider_ui.setting_win_slider_volume, volume_, LV_ANIM_OFF);
-        uint8_t screen_off_minute = static_cast<uint16_t>(screen_timeout_ms_/(1000*60));
-        lv_slider_set_value(guider_ui.setting_win_slider_switch, screen_off_minute, LV_ANIM_OFF);
+            // 设置初始值
+            lv_slider_set_value(guider_ui.screen_setting_slider_bright, brightness_, LV_ANIM_OFF);
+            lv_slider_set_value(guider_ui.screen_setting_slider_volume, volume_, LV_ANIM_OFF);
+            uint8_t screen_off_minute = static_cast<uint16_t>(screen_timeout_ms_/(1000*60));
+            lv_slider_set_value(guider_ui.screen_setting_slider_switch, screen_off_minute, LV_ANIM_OFF);
 
-        // 更新百分比标签
-        UpdateBrightnessLabel(brightness_);
-        UpdateVolumeLabel(volume_);
-        UpdateScreenOffMinute(screen_off_minute);
+            // 更新百分比标签
+            UpdateBrightnessLabel(brightness_);
+            UpdateVolumeLabel(volume_);
+            UpdateScreenOffMinute(screen_off_minute);
 
-        // 绑定事件回调
-        lv_obj_add_event_cb(guider_ui.setting_win_slider_volume, volume_slider_event_handler, LV_EVENT_VALUE_CHANGED, nullptr);
-        lv_obj_add_event_cb(guider_ui.setting_win_slider_bright, brightness_slider_event_handler, LV_EVENT_VALUE_CHANGED, nullptr);
-        lv_obj_add_event_cb(guider_ui.setting_win_slider_switch, light_switch_event_handler, LV_EVENT_VALUE_CHANGED, nullptr);
+            // 绑定事件回调
+            lv_obj_add_event_cb(guider_ui.screen_setting_slider_volume, volume_slider_event_handler, LV_EVENT_VALUE_CHANGED, nullptr);
+            lv_obj_add_event_cb(guider_ui.screen_setting_slider_bright, brightness_slider_event_handler, LV_EVENT_VALUE_CHANGED, nullptr);
+            lv_obj_add_event_cb(guider_ui.screen_setting_slider_switch, light_switch_event_handler, LV_EVENT_VALUE_CHANGED, nullptr);
+        }
     }else{
         // 仅当 NVS 中存储的值与当前对象属性有差异时才写入，避免无谓的擦写
         prefs_.begin(SETTINGS_NAMESPACE, true); // 只读模式
@@ -88,7 +91,7 @@ void Setting::screen_loaded(SCREEN_LOAD_STAUS status){
 
 void Setting::volume_slider_event_handler(lv_event_t *e) {
     auto& setting = Setting::GetInstance();
-    int32_t value = lv_slider_get_value(guider_ui.setting_win_slider_volume);
+    int32_t value = lv_slider_get_value(guider_ui.screen_setting_slider_volume);
     setting.SetVolume(static_cast<uint16_t>(value)); 
     setting.UpdateVolumeLabel(static_cast<uint16_t>(value));
     setting.ApplyVolume();
@@ -97,7 +100,7 @@ void Setting::volume_slider_event_handler(lv_event_t *e) {
 
 void Setting::brightness_slider_event_handler(lv_event_t *e) {
     auto& setting = Setting::GetInstance();
-    int32_t value = lv_slider_get_value(guider_ui.setting_win_slider_bright);
+    int32_t value = lv_slider_get_value(guider_ui.screen_setting_slider_bright);
     setting.SetScreenBrightness(static_cast<uint8_t>(value));
     setting.UpdateBrightnessLabel(static_cast<uint8_t>(value));
     setting.ApplyBrightness();
@@ -105,7 +108,7 @@ void Setting::brightness_slider_event_handler(lv_event_t *e) {
 
 void Setting::light_switch_event_handler(lv_event_t *e) {
     auto& setting = Setting::GetInstance();
-    int32_t value = lv_slider_get_value(guider_ui.setting_win_slider_switch);
+    int32_t value = lv_slider_get_value(guider_ui.screen_setting_slider_switch);
     setting.SetScreenTimeout(value*1000*60);
     setting.UpdateScreenOffMinute(static_cast<uint8_t>(value));
 }
@@ -122,27 +125,27 @@ void Setting::ApplyVolume() {
 }
 
 void Setting::UpdateVolumeLabel(uint16_t volume) {
-    if (guider_ui.setting_win_label_vol_percent) {
+    if (guider_ui.screen_setting_label_vol_percent) {
         char buf[8];
         snprintf(buf, sizeof(buf), "%d%%", volume);
-        lv_label_set_text(guider_ui.setting_win_label_vol_percent, buf);
+        lv_label_set_text(guider_ui.screen_setting_label_vol_percent, buf);
     }
 }
 
 void Setting::UpdateBrightnessLabel(uint8_t brightness) {
-    if (guider_ui.setting_win_label_bright_percent) {
+    if (guider_ui.screen_setting_label_bright_percent) {
         uint8_t percent = (brightness * 100) / MAX_BRIGHTNESS;
         char buf[8];
         snprintf(buf, sizeof(buf), "%d%%", percent);
-        lv_label_set_text(guider_ui.setting_win_label_bright_percent, buf);
+        lv_label_set_text(guider_ui.screen_setting_label_bright_percent, buf);
     }
 }
 
 void Setting::UpdateScreenOffMinute(uint8_t minute){
-    if (guider_ui.setting_win_label_minute) {
+    if (guider_ui.screen_setting_label_minute) {
         char buf[16];
         snprintf(buf, sizeof(buf), "%d分钟", minute);
-        lv_label_set_text(guider_ui.setting_win_label_minute, buf);
+        lv_label_set_text(guider_ui.screen_setting_label_minute, buf);
     }
 }
 

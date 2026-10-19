@@ -41,12 +41,14 @@ void Radio::Init() {
 
 
 void Radio::FillListUI() {
-    lv_obj_t* list = guider_ui.radio_win_list_radio;
+    lv_obj_t* list = guider_ui.screen_radio_list_radio;
     if (!list) return;
     lv_obj_clean(list);
     int size = sizeof(radio_infos)/sizeof(radio_infos[0]);
     for (size_t i = 0; i < size; i++) {
-        lv_obj_t* btn = lv_list_add_btn(list, &_btn_list_play_alpha_20x20, radio_infos[i].name);
+        lv_obj_t* btn = lv_list_add_btn(list, &_btn_play_RGB565A8_40x40, radio_infos[i].name);
+        lv_obj_t* icon = lv_obj_get_child(btn, 0);
+        if (icon) lv_image_set_scale(icon, LV_SCALE_NONE / 2);
         lv_obj_t* label = lv_obj_get_child(btn, 1);
         if (label) {
             lv_obj_set_style_text_font(label, &font_puhui_16_4, LV_PART_MAIN | LV_STATE_DEFAULT);
@@ -65,7 +67,7 @@ void Radio::ListItemClickHandler(lv_event_t* e) {
 
 void Radio::PlayStation(size_t index) {
     int size = sizeof(radio_infos)/sizeof(radio_infos[0]);
-    lv_obj_t* list = guider_ui.radio_win_list_radio;
+    lv_obj_t* list = guider_ui.screen_radio_list_radio;
     if(index == current_index_){
         StopPlay();
         return;
@@ -76,17 +78,17 @@ void Radio::PlayStation(size_t index) {
         if (real_idx == (int)current_index_) {
             lv_obj_set_style_bg_color(item, lv_color_hex(0xFFFFFF), LV_PART_MAIN | LV_STATE_DEFAULT);
             lv_obj_t *icon = lv_obj_get_child(item, 0);
-            lv_img_set_src(icon, &_btn_list_play_alpha_20x20);
+            lv_img_set_src(icon, &_btn_play_RGB565A8_40x40);
         }
         if (real_idx == (int)index) {
             lv_obj_set_style_bg_color(item, lv_color_hex(0xc6a2a2), LV_PART_MAIN | LV_STATE_DEFAULT);
             lv_obj_t *icon = lv_obj_get_child(item, 0);
-            lv_img_set_src(icon, &_btn_list_pause_alpha_20x20);
+            lv_img_set_src(icon, &_btn_pause_RGB565A8_40x40);
         }
     } 
     StopPlay();
     current_index_ = index;
-    lv_label_set_text(guider_ui.radio_win_label_1, radio_infos[index].name);
+    lv_label_set_text(guider_ui.screen_radio_label_1, radio_infos[index].name);
     if (audio) audio->connecttohost(radio_infos[index].url);
     
 }
@@ -95,8 +97,8 @@ void Radio::PlayStation(size_t index) {
  void Radio::radio_screen_load(SCREEN_LOAD_STAUS status){
     if (status == LOADED) {
         playing_ = true; 
-        lv_label_set_text(guider_ui.radio_win_label_1,"list");
-        lv_obj_set_style_text_font(guider_ui.radio_win_label_1, &font_puhui_16_4, LV_PART_MAIN|LV_STATE_DEFAULT);
+        lv_label_set_text(guider_ui.screen_radio_label_1,"list");
+        lv_obj_set_style_text_font(guider_ui.screen_radio_label_1, &font_puhui_16_4, LV_PART_MAIN|LV_STATE_DEFAULT);
         FillListUI();
         if (auto dev = board.getAudioDeviceEs8311()) {
                 dev->disable_i2s();
@@ -127,8 +129,8 @@ void Radio::PlayStation(size_t index) {
         if (auto dev = board.getAudioDeviceEs8311()) {
             dev->reconfigure_gpio();
         }
-        if (guider_ui.radio_win_list_radio) {
-            lv_obj_clean(guider_ui.radio_win_list_radio);
+        if (guider_ui.screen_radio_list_radio) {
+            lv_obj_clean(guider_ui.screen_radio_list_radio);
         }
     }
  }

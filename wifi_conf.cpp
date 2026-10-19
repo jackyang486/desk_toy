@@ -16,7 +16,6 @@
 constexpr smartconfig_type_t kSmartConfigType = SC_TYPE_ESPTOUCH_AIRKISS;
 
 
-
 wifi_config& wifi_config::GetInstance() {
     static wifi_config instance;
     return instance;
@@ -32,7 +31,7 @@ void wifi_config::initial(){
           int8_t rssi = wifi_list[i].rssi;
           char buf[64];
           snprintf(buf, sizeof(buf), "%s(%d)", ssid.c_str(),rssi);
-          lv_obj_t *btn = lv_list_add_btn(guider_ui.wifi_win_list, LV_SYMBOL_WIFI, buf);
+          lv_obj_t *btn = lv_list_add_btn(guider_ui.screen_wifi_list, LV_SYMBOL_WIFI, buf);
           lv_obj_t *btnText = lv_obj_get_child(btn, 1); 
           char *ssid_copy = strdup(ssid.c_str());
           lv_obj_add_event_cb(btn, wifi_config::wifi_list_click_event, LV_EVENT_CLICKED, (void *)ssid_copy);
@@ -52,7 +51,8 @@ void wifi_config::wifi_scan_start()
    static lv_style_t style_wifi_btn_text;
    lv_style_init(&style_wifi_btn_text);
    lv_style_set_text_font(&style_wifi_btn_text, &font_puhui_16_4);
-   lv_obj_add_style(guider_ui.wifi_win_list, &style_wifi_btn_text, LV_PART_ITEMS | LV_STATE_DEFAULT);
+   lv_obj_add_style(guider_ui.screen_wifi_list, &style_wifi_btn_text, LV_PART_ITEMS | LV_STATE_DEFAULT);
+   printf("scan begin");
    xTaskCreate([](void* arg) {
        board.GetWifiList();
        vTaskDelete(NULL);
@@ -64,17 +64,16 @@ void wifi_config::wifi_scan_start()
 void wifi_config::wifi_connect_task(){
     auto *params = new WifiConnectParams{
         this,  // ✅ 直接传 this，不依赖局部引用
-        lv_textarea_get_text(guider_ui.wifi_win_wifi_name_value),
-        lv_textarea_get_text(guider_ui.wifi_win_wifi_pass_value)
+        lv_textarea_get_text(guider_ui.screen_wifi_wifi_name_value),
+        lv_textarea_get_text(guider_ui.screen_wifi_wifi_pass_value)
     };
     xTaskCreate([](void *arg){
       auto *p = static_cast<WifiConnectParams*>(arg);
       p->instance->wifi_connect(p->ssid.c_str(), p->password.c_str());
       vTaskDelay(pdMS_TO_TICKS(1000));
-      lv_obj_add_flag(guider_ui.wifi_win_form, LV_OBJ_FLAG_HIDDEN);
-      lv_obj_clear_flag(guider_ui.wifi_win_list, LV_OBJ_FLAG_HIDDEN);
+      lv_obj_add_flag(guider_ui.screen_wifi_form, LV_OBJ_FLAG_HIDDEN);
+      lv_obj_clear_flag(guider_ui.screen_wifi_list, LV_OBJ_FLAG_HIDDEN);
       if(WiFi.status() == WL_CONNECTED){
-         show_toast(lv_scr_act(),"连接成功");
          auto& setting = Setting::GetInstance();
          setting.saveWifiConfig(p->ssid.c_str(),p->password.c_str());
       }
@@ -118,9 +117,9 @@ void wifi_config::wifi_list_click_event(lv_event_t *e) {
    char *ssid = (char *)lv_event_get_user_data(e);
    if (ssid) {
         // 自动填充SSID到输入框
-        lv_obj_add_flag(guider_ui.wifi_win_list, LV_OBJ_FLAG_HIDDEN);
-        lv_obj_clear_flag(guider_ui.wifi_win_form, LV_OBJ_FLAG_HIDDEN);
-        lv_textarea_set_text(guider_ui.wifi_win_wifi_name_value, ssid);
+        lv_obj_add_flag(guider_ui.screen_wifi_list, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_clear_flag(guider_ui.screen_wifi_form, LV_OBJ_FLAG_HIDDEN);
+        lv_textarea_set_text(guider_ui.screen_wifi_wifi_name_value, ssid);
   }
 }
 //主屏加载后,自动连接wifi
@@ -133,33 +132,33 @@ void wifi_config::main_sreen_loaded_task(){
      auto *p = static_cast<wifi_config*>(arg);
     if(WiFi.status() == WL_CONNECTED){ //如果是已经连接上了，则显示IP
          String ipAddrss =  WiFi.localIP().toString();
-         lv_label_set_text(guider_ui.screen_ip_address, ipAddrss.c_str());
-         lv_obj_clear_flag(guider_ui.screen_wifi_icon, LV_OBJ_FLAG_HIDDEN);
-         lv_obj_add_flag(guider_ui.screen_no_wifi_icon, LV_OBJ_FLAG_HIDDEN);
+         lv_label_set_text(guider_ui.screen_weather_ip_address, ipAddrss.c_str());
+         lv_obj_clear_flag(guider_ui.screen_weather_wifi_icon, LV_OBJ_FLAG_HIDDEN);
+         lv_obj_add_flag(guider_ui.screen_weather_no_wifi_icon, LV_OBJ_FLAG_HIDDEN);
          wifi_udp_init();
          xSemaphoreGive(p->wifi_sem_);
      }else{
-         lv_obj_set_style_text_font(guider_ui.screen_ip_address, &font_puhui_16_4, LV_PART_MAIN|LV_STATE_DEFAULT);
+         lv_obj_set_style_text_font(guider_ui.screen_weather_ip_address, &font_puhui_16_4, LV_PART_MAIN|LV_STATE_DEFAULT);
          auto& setting = Setting::GetInstance();
          std::pair<String, String>  params =  setting.getWifiConfig();
          if(!params.first.isEmpty() && !params.second.isEmpty()){
-            lv_label_set_text(guider_ui.screen_ip_address,"WIFI连接中...");
+            lv_label_set_text(guider_ui.screen_weather_ip_address,"WIFI连接中...");
             p->wifi_connect(params.first.c_str(), params.second.c_str());
             if (WiFi.status() == WL_CONNECTED) {
               String ipAddrss =  WiFi.localIP().toString();
-              lv_label_set_text(guider_ui.screen_ip_address, ipAddrss.c_str());
-              lv_obj_clear_flag(guider_ui.screen_wifi_icon, LV_OBJ_FLAG_HIDDEN);
-              lv_obj_add_flag(guider_ui.screen_no_wifi_icon, LV_OBJ_FLAG_HIDDEN);
+              lv_label_set_text(guider_ui.screen_weather_ip_address, ipAddrss.c_str());
+              lv_obj_clear_flag(guider_ui.screen_weather_wifi_icon, LV_OBJ_FLAG_HIDDEN);
+              lv_obj_add_flag(guider_ui.screen_weather_no_wifi_icon, LV_OBJ_FLAG_HIDDEN);
               vTaskDelay(pdMS_TO_TICKS(200));
               wifi_udp_init();
               xSemaphoreGive(p->wifi_sem_);
             } else {
               xSemaphoreGive(p->wifi_sem_);
-              lv_label_set_text(guider_ui.screen_ip_address,"WIFI连接失败");
+              lv_label_set_text(guider_ui.screen_weather_ip_address,"WIFI连接失败");
             }
         }else{
              xSemaphoreGive(p->wifi_sem_);
-             lv_label_set_text(guider_ui.screen_ip_address,"请配置WIFI");
+             lv_label_set_text(guider_ui.screen_weather_ip_address,"请配置WIFI");
         }
      }
      // 退出任务

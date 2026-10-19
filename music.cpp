@@ -41,10 +41,11 @@ static bool list_swipe_registered = false;
 // 统一改由 audio_info_callback() 上抛事件。回调在音频任务（Core 1）里执行，这里用 volatile 全局变量
 // 暂存数据/标志，再交给 LVGL 定时器（主线程）统一处理，保证线程安全。
 static volatile bool     g_eof_pending = false;   // 播放结束，待切下一曲
-static volatile bool     g_cover_pending = false; // 发现封面，待读取+显示
+//static volatile bool     g_cover_pending = false; // 发现封面，待读取+显示
 static volatile uint32_t g_cover_pos = 0;
 static volatile uint32_t g_cover_len = 0;
 static char              g_cur_file_path[128] = {0}; // 当前播放文件路径（相对 SD_MMC 挂载点）
+static const char *basePath = "S:/music";
 
 void on_audio_info(Audio::msg_t msg) {
     switch (msg.e) {
@@ -70,7 +71,7 @@ void on_audio_info(Audio::msg_t msg) {
             if (msg.vec1.size() >= 2) {
                 g_cover_pos = msg.vec1[0];
                 g_cover_len = msg.vec1[1];
-                g_cover_pending = true;   // 交给主线程读文件+显示
+                //g_cover_pending = true;   // 交给主线程读文件+显示
             }
             break;
         case Audio::evt_lyrics:
@@ -94,10 +95,10 @@ void init_spectrum(void) {
     int start_x = (240 - total_width - SPECTRUM_RIGHT_PADDING);
     int start_y = SPECTRUM_START_Y;
     for (int i = 0; i < SPECTRUM_BARS; i++) {
-        spectrum_bars[i] = lv_obj_create(guider_ui.music_player);
+        spectrum_bars[i] = lv_obj_create(guider_ui.screen_music_player);
         lv_obj_set_size(spectrum_bars[i], SPECTRUM_BAR_WIDTH, 0);
         lv_obj_set_pos(spectrum_bars[i], start_x + i * (SPECTRUM_BAR_WIDTH + SPECTRUM_BAR_GAP), start_y);
-        spectrum_peaks[i] = lv_obj_create(guider_ui.music_player);
+        spectrum_peaks[i] = lv_obj_create(guider_ui.screen_music_player);
         lv_obj_set_size(spectrum_peaks[i], SPECTRUM_BAR_WIDTH, 2);
         lv_obj_set_pos(spectrum_peaks[i], start_x + i * (SPECTRUM_BAR_WIDTH + SPECTRUM_BAR_GAP), start_y - 2);
         lv_obj_set_style_bg_color(spectrum_peaks[i], lv_color_hex(0xFFFFFF), LV_PART_MAIN | LV_STATE_DEFAULT);
@@ -227,20 +228,21 @@ void Music_player::play_music()
     total_sec = 1;
     if(current_music < 0) current_music = music_files.size() - 1;
     if(current_music >= music_files.size()) current_music = 0;
-    std::pair<String, String> musicFile = music_files.at(current_music);
-    lv_obj_clear_flag(guider_ui.music_pause_img, LV_OBJ_FLAG_HIDDEN);
-    lv_obj_add_flag(guider_ui.music_playing_img, LV_OBJ_FLAG_HIDDEN);
+    String musicFile = music_files.at(current_music);
+    lv_obj_clear_flag(guider_ui.screen_music_pause_img, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_add_flag(guider_ui.screen_music_playing_img, LV_OBJ_FLAG_HIDDEN);
     //设置歌手和歌曲名称
-    String filePath = musicFile.first;
-    // 记录当前文件路径，供 evt_image 封面事件在主线程重开文件读取 APIC 数据
-    strncpy(g_cur_file_path, filePath.c_str(), sizeof(g_cur_file_path) - 1);
-    g_cur_file_path[sizeof(g_cur_file_path) - 1] = '\0';
-    String songName = musicFile.second;
-    lv_label_set_text(guider_ui.music_label_music_name,songName.c_str()); 
-    lv_slider_set_value(guider_ui.music_slider, 0, LV_ANIM_OFF); //切歌时，滑块归0
+    // String filePath = musicFile.first;
+    // // 记录当前文件路径，供 evt_image 封面事件在主线程重开文件读取 APIC 数据
+    // strncpy(g_cur_file_path, filePath.c_str(), sizeof(g_cur_file_path) - 1);
+    // g_cur_file_path[sizeof(g_cur_file_path) - 1] = '\0';
+    char fullPath[256];
+    lv_snprintf(fullPath, sizeof(fullPath), "%s/%s","/music", musicFile.c_str());
+    lv_label_set_text(guider_ui.screen_music_label_music_name,musicFile.c_str()); 
+    lv_slider_set_value(guider_ui.screen_music_slider, 0, LV_ANIM_OFF); //切歌时，滑块归0
     check_list_item(current_music,true);
     audio->stopSong();
-    audio->connecttoFS(SD_MMC, filePath.c_str());
+    audio->connecttoFS(SD_MMC, fullPath);
 }
 // 生成 [min, max] 范围内的随机整数（闭区间）
 int getRandomInt(int min, int max) {
@@ -262,30 +264,30 @@ static void handle_eof_next() {
 }
 
 // 读取并显示专辑封面（在 LVGL 主线程调用）
-static void process_cover_pending() {
-    g_cover_pending = false;
-    if (g_cover_len == 0 || g_cover_len > MAX_COVER_SIZE) return;
+// static void process_cover_pending() {
+//     g_cover_pending = false;
+//     if (g_cover_len == 0 || g_cover_len > MAX_COVER_SIZE) return;
 
-    File f = SD_MMC.open(g_cur_file_path);
-    if (!f) return;
-    f.seek(g_cover_pos);
-    size_t n = f.read(coverBuffer, g_cover_len);
-    f.close();
-    if (n != g_cover_len) return;
+//     File f = SD_MMC.open(g_cur_file_path);
+//     if (!f) return;
+//     f.seek(g_cover_pos);
+//     size_t n = f.read(coverBuffer, g_cover_len);
+//     f.close();
+//     if (n != g_cover_len) return;
 
-    // 跳过 APIC 头，定位 JPEG SOI (0xFF 0xD8)
-    size_t jpegStart = 0;
-    for (size_t i = 11; i + 1 < n; i++) {
-        if (coverBuffer[i] == 0xFF && coverBuffer[i + 1] == 0xD8) {
-            jpegStart = i;
-            break;
-        }
-    }
-    if (jpegStart == 0) return; // 没找到 JPEG 头
+//     // 跳过 APIC 头，定位 JPEG SOI (0xFF 0xD8)
+//     size_t jpegStart = 0;
+//     for (size_t i = 11; i + 1 < n; i++) {
+//         if (coverBuffer[i] == 0xFF && coverBuffer[i + 1] == 0xD8) {
+//             jpegStart = i;
+//             break;
+//         }
+//     }
+//     if (jpegStart == 0) return; // 没找到 JPEG 头
 
-    lv_img_set_src(guider_ui.music_album_img, &coverBuffer[jpegStart]);
-    lv_obj_invalidate(guider_ui.music_album_img);
-}
+//     lv_img_set_src(guider_ui.screen_music_album_img, &coverBuffer[jpegStart]);
+//     lv_obj_invalidate(guider_ui.screen_music_album_img);
+// }
 
 
 //音乐随机播放
@@ -333,7 +335,7 @@ static void lv_timer_refresh_time(lv_timer_t *timer)
          total_sec = audio->getAudioFileDuration();
          if(total_sec == 0)
          total_sec = 1;
-         lv_slider_set_range(guider_ui.music_slider, 0, total_sec);
+         lv_slider_set_range(guider_ui.screen_music_slider, 0, total_sec);
        }
         uint32_t curr = audio->getAudioCurrentTime();
         char buf[32];
@@ -341,8 +343,8 @@ static void lv_timer_refresh_time(lv_timer_t *timer)
             curr / 60, curr % 60, 
             total_sec / 60, total_sec % 60
         );
-        lv_label_set_text(guider_ui.music_label_slider_time, buf);
-        lv_slider_set_value(guider_ui.music_slider, curr, LV_ANIM_OFF);
+        lv_label_set_text(guider_ui.screen_music_label_slider_time, buf);
+        lv_slider_set_value(guider_ui.screen_music_slider, curr, LV_ANIM_OFF);
     }
     update_spectrum();
 
@@ -351,13 +353,13 @@ static void lv_timer_refresh_time(lv_timer_t *timer)
         g_eof_pending = false;
         handle_eof_next();
     }
-    if (g_cover_pending) {
-        process_cover_pending();
-    }
+    // if (g_cover_pending) {
+    //     process_cover_pending();
+    // }
 }
 
 void change_list_other_item_style(uint16_t idx) {
-    lv_obj_t *list = guider_ui.music_list_music;
+    lv_obj_t *list = guider_ui.screen_music_list_music;
     if (!list) return;
     for (int i = 0; i < LIST_VISIBLE_ITEMS; i++) {
         lv_obj_t *otherItem = lv_obj_get_child(list, i);
@@ -365,7 +367,7 @@ void change_list_other_item_style(uint16_t idx) {
         int real_idx = (int)(uintptr_t)lv_obj_get_user_data(otherItem);
         if (real_idx == (int)idx) continue;
         lv_obj_set_style_bg_color(otherItem, lv_color_hex(0x343247), LV_PART_MAIN | LV_STATE_DEFAULT);
-        lv_img_set_src(icon, &_btn_list_play_alpha_20x20);
+        lv_img_set_src(icon, &_btn_play_RGB565A8_40x40);
     }
 }
 
@@ -376,7 +378,7 @@ void music_list_item_click(lv_event_t *e) {
 }
 
 void check_list_item(uint16_t idx,bool check) {
-    lv_obj_t *list = guider_ui.music_list_music;
+    lv_obj_t *list = guider_ui.screen_music_list_music;
     if (!list) return;
     int listStartIndex = music_player.getListStartIndex();
     if(idx < listStartIndex || idx >= (listStartIndex+LIST_VISIBLE_ITEMS)){  //如果当前歌曲索引大于list的开始和结束索引，则重新刷新播放列表
@@ -394,7 +396,7 @@ void check_list_item(uint16_t idx,bool check) {
     if (selectItem) {
         lv_obj_set_style_bg_color(selectItem, lv_color_hex(0xc6a2a2), LV_PART_MAIN | LV_STATE_DEFAULT);
         lv_obj_t *icon = lv_obj_get_child(selectItem, 0);
-        lv_img_set_src(icon, &_btn_list_pause_alpha_20x20);
+        lv_img_set_src(icon, &_btn_pause_RGB565A8_40x40);
     }
     if(check){
         change_list_other_item_style(idx);
@@ -408,14 +410,14 @@ void music_list_swipe_event_handler(lv_event_t *e);
 
 //加载音乐列表
 void  Music_player::fill_music_list_panel(void) {
-    lv_obj_t *list = guider_ui.music_list_music;
+    lv_obj_t *list = guider_ui.screen_music_list_music;
     if (!list) return;
     if(!list_swipe_registered){
         lv_obj_clean(list);
     }
     int total = music_files.size();
     for (int i = list_start_index; i < (list_start_index+LIST_VISIBLE_ITEMS); i++) {
-            const char* songName = music_files.at(i).second.c_str();
+            const char* songName = music_files.at(i).c_str();
             lv_obj_t *btn = NULL;
             if(list_swipe_registered){  //已加载过了
                 btn = lv_obj_get_child(list, (i-list_start_index));
@@ -424,13 +426,15 @@ void  Music_player::fill_music_list_panel(void) {
                 lv_label_set_text(label,songName);
                 if(music_player.getCurrentMusic() == i){   //如果是播放中的歌曲，则改变背景色和按钮状态
                     lv_obj_set_style_bg_color(btn, lv_color_hex(0xc6a2a2), LV_PART_MAIN | LV_STATE_DEFAULT);
-                    lv_img_set_src(icon, &_btn_list_pause_alpha_20x20);
+                    lv_img_set_src(icon, &_btn_pause_RGB565A8_40x40);
                 }else{
                     lv_obj_set_style_bg_color(btn, lv_color_hex(0x343247), LV_PART_MAIN | LV_STATE_DEFAULT);
-                    lv_img_set_src(icon, &_btn_list_play_alpha_20x20);
+                    lv_img_set_src(icon, &_btn_play_RGB565A8_40x40);
                 }
             }else{
-                btn = lv_list_add_btn(list, &_btn_list_play_alpha_20x20, songName);
+                btn = lv_list_add_btn(list, &_btn_play_RGB565A8_40x40, songName);
+                lv_obj_t *icon = lv_obj_get_child(btn, 0);
+                if (icon) lv_image_set_scale(icon, LV_SCALE_NONE / 2);
                 lv_obj_set_style_bg_color(btn, lv_color_hex(0x343247), LV_PART_MAIN | LV_STATE_DEFAULT);
                 lv_obj_t *label = lv_obj_get_child(btn, 1);
                 if (label) {
@@ -487,23 +491,11 @@ void music_list_swipe_event_handler(lv_event_t *e) {
 //循环播放
 void Music_player::music_loop(SCREEN_LOAD_STAUS playerLoadStatus){
     if(playerLoadStatus == LOADED){
-        std::vector<String> musicFileList; 
-        board.scanDir("S:\music",&musicFileList,MP3_TYPE);
-        for(int i=0; i<musicFileList.size(); i++){
-            String filePath = musicFileList.at(i);
-            filePath = filePath.substring(2);
-            size_t pos = filePath.lastIndexOf('/');
-            String songName = filePath.substring(pos+1,filePath.length());
-            music_files.push_back({filePath,songName});
-        }
-        char music_title[20];
-        sprintf(music_title,"歌曲列表(%d)",music_player.getMusicFilesSize());
-        lv_label_set_text(guider_ui.music_label_list_name,music_title);
-        lv_obj_set_style_text_font(guider_ui.music_label_list_name, &font_puhui_16_4, LV_PART_MAIN|LV_STATE_DEFAULT); 
+        board.scanDir(basePath,&music_files,MP3_TYPE);
         fill_music_list_panel(); 
-        lv_obj_add_event_cb(guider_ui.music_list_music, music_list_swipe_event_handler, LV_EVENT_ALL, NULL);
+        lv_obj_add_event_cb(guider_ui.screen_music_list_music, music_list_swipe_event_handler, LV_EVENT_ALL, NULL);
         list_swipe_registered = true;
-        lv_obj_set_style_text_font(guider_ui.music_label_music_name, &font_puhui_16_4, LV_PART_MAIN|LV_STATE_DEFAULT); 
+        lv_obj_set_style_text_font(guider_ui.screen_music_label_music_name, &font_puhui_16_4, LV_PART_MAIN|LV_STATE_DEFAULT); 
         init_spectrum();
         if (music_timer == NULL) {
             music_timer = lv_timer_create(lv_timer_refresh_time, 100, NULL);
@@ -552,7 +544,7 @@ void Music_player::music_loop(SCREEN_LOAD_STAUS playerLoadStatus){
         }
         music_files.clear();
         music_files.shrink_to_fit();
-        lv_obj_clean(guider_ui.music_list_music);
+        lv_obj_clean(guider_ui.screen_music_list_music);
         list_swipe_registered = false;
     }
 }

@@ -52,19 +52,16 @@ void Board::scanDir(const char *dirPath,std::vector<String> * filelist,FILE_TYPE
     // 读取目录下每一项（文件/文件夹）
     while (1)
     {
-        res = lv_fs_dir_read(&dir, fname);
+        res = lv_fs_dir_read(&dir, fname, sizeof(fname));
         if (res != LV_FS_RES_OK || strlen(fname) <=1) {  //过滤掉，空、乱码、不可见字符）
             break;
         }
         // 跳过 . 和 .. 目录
         if (strcmp(fname, ".") == 0 || strcmp(fname, "..") == 0 || strcmp(fname, "/") ==0 || strcmp(fname, "/image") == 0)
             continue;
-        // 构建完整路径
-        char fullPath[256];
         if (strchr(fname, '.') == NULL) {
              
         } else { //如果是文件，则分别读取图片文件和音乐文件
-           lv_snprintf(fullPath, sizeof(fullPath), "%s/%s", dirPath, fname);
            size_t len = strlen(fname);
            const std::string lower_name = [&]() {
                std::string s = fname;
@@ -80,14 +77,14 @@ void Board::scanDir(const char *dirPath,std::vector<String> * filelist,FILE_TYPE
                        lower_name.find(".bmp") != std::string::npos ||
                        lower_name.find(".bin") != std::string::npos ||
                        lower_name.find(".gif") != std::string::npos){
-                        filelist->push_back(String(fullPath));
+                        filelist->push_back(fname);
                     }
                 }else  if(file_type == MP3_TYPE && len > 4){
                      if(lower_name.find(".wav") != std::string::npos || lower_name.find(".mp3") != std::string::npos){
-                        filelist->push_back(String(fullPath));
+                        filelist->push_back(fname);
                      }
                 }
-        }
+            }
     }
     // 关闭目录
     lv_fs_dir_close(&dir);
@@ -258,5 +255,3 @@ void Board::GetWifiList() {
 void  Board::onWifiListScaned(std::function<void(const std::vector<WifiInfo>& wifi_list)> callback) {
     on_wifi_scaned_ = callback;
 }
-
-

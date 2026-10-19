@@ -12,7 +12,7 @@ typedef enum {
 } PLAY_STATUS;
 class Music_player {
   private:
-    std::vector<std::pair<String, String>> music_files;
+    std::vector<String> music_files;
     uint16_t current_music;
     int  list_start_index;
     int  touch_start_Y;
@@ -52,7 +52,7 @@ class Music_player {
     int getMusicFilesSize(){
        return  music_files.size();
     };
-    std::vector<std::pair<String, String>> getMusicFilesList(){
+    std::vector<String> getMusicFilesList(){
        return  music_files;
     };
     void setListStartIndex(int idx){

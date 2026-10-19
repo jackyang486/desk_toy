@@ -40,9 +40,9 @@ void screen_load_test(SCREEN_LOAD_STAUS loadStatus){
 /* 自动关闭定时器回调 */
  void toast_timer_cb(lv_timer_t *timer)
 {
-    lv_obj_t *toast = (lv_obj_t *)timer->user_data;
+    lv_obj_t *toast = (lv_obj_t *)lv_timer_get_user_data(timer);
     lv_obj_del(toast);
-    lv_timer_del(timer);  /* 一次性定时器，用完自删 */
+    lv_timer_delete(timer);  /* 一次性定时器，用完自删 */
 }
 
 /**
@@ -57,8 +57,11 @@ void show_toast(lv_obj_t *parent, const char *msg)
     lv_obj_remove_style_all(toast);              /* 清除默认样式 */
     lv_obj_set_style_bg_color(toast, lv_color_black(), 0);
     lv_obj_set_style_bg_opa(toast, LV_OPA_70, 0);
-    lv_obj_set_style_radius(toast, 10, 0);
-    lv_obj_set_style_pad_all(toast, 10, 0);
+    lv_obj_set_style_radius(toast, 10,0);
+    lv_obj_set_style_pad_left(toast, 5,0);
+    lv_obj_set_style_pad_right(toast, 5,0);
+    lv_obj_set_style_pad_top(toast, 5,0);
+    lv_obj_set_style_pad_bottom(toast, 5,0);
     lv_obj_clear_flag(toast, LV_OBJ_FLAG_SCROLLABLE);
 
     /* 居中显示 */
@@ -81,30 +84,30 @@ void show_toast(lv_obj_t *parent, const char *msg)
 
 void custom_init(lv_ui *ui)
 {
-    lv_label_set_text(guider_ui.screen_label_week, ""); 
-    lv_label_set_text(guider_ui.screen_label_year_month, ""); 
+    lv_label_set_text(guider_ui.screen_weather_label_week, ""); 
+    lv_label_set_text(guider_ui.screen_weather_label_year_month, ""); 
 }
 
 void screen_load_register(screen_load *screen_load){
        screen_load_method = screen_load;
 }
 void screen_load_execute(lv_obj_t *obj,SCREEN_LOAD_STAUS loadStatus){
-    if(obj == guider_ui.screen){
+    if(obj == guider_ui.screen_weather){
         screen_load_method->main_screen_load(loadStatus);
-    }else if(obj == guider_ui.wifi_win){
+    }else if(obj == guider_ui.screen_wifi){
         screen_load_method->wifi_screen_load(loadStatus);
-    }else if(obj == guider_ui.photo_win){
+    }else if(obj == guider_ui.screen_photo){
         screen_load_method->photo_screen_load(loadStatus);
-    }else if(obj == guider_ui.music){
+    }else if(obj == guider_ui.screen_music){
         screen_load_method->music_screen_load(loadStatus);
-    }else if(obj == guider_ui.robot_win){
+    }else if(obj == guider_ui.screen_robot){   
         screen_load_method->robot_screen_load(loadStatus);
-    }else if(obj == guider_ui.setting_win){
+    }else if(obj == guider_ui.screen_setting){
         screen_load_method->setting_screen_load(loadStatus);
-    }else if(obj == guider_ui.radio_win){
+    }else if(obj == guider_ui.screen_radio){
         screen_load_method->radio_screen_load(loadStatus);
-    }else if(obj == guider_ui.online_img_win){
-        screen_load_method->img_screen_load(loadStatus);
+    }else if(obj == guider_ui.screen_mouse){
+        screen_load_method->fly_mouse_screen_load(loadStatus);
     }
 
 

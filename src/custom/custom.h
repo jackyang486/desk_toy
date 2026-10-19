@@ -31,10 +31,10 @@ typedef struct {
     screen_load_callback_t wifi_screen_load;
     screen_load_callback_t photo_screen_load;
     screen_load_callback_t robot_screen_load;
+    screen_load_callback_t fly_mouse_screen_load;
     screen_load_callback_t music_screen_load;
     screen_load_callback_t setting_screen_load;
     screen_load_callback_t radio_screen_load;
-    screen_load_callback_t img_screen_load;
 }screen_load;
 
 
@@ -56,6 +56,8 @@ void lv_demo_music_resume(void);
 void lv_demo_music_pause(void);
 void weather_play_init(void);
 void show_toast(lv_obj_t *parent, const char *msg);
+void photo_album_open_local(void);
+void photo_album_open_online(void);
 #ifdef __cplusplus
 }
 

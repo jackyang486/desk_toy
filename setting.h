@@ -63,6 +63,7 @@ private:
     uint8_t minute_;
     uint16_t volume_;
     uint32_t screen_timeout_ms_;
+    bool hasInitial;
 };
 
 #endif

@@ -1,125 +1,46 @@
 #include "weather_printf.h"
 #include "src/generated/gui_guider.h"
 
+static const lv_image_dsc_t *const white_digits_3660[] = {
+  &W_3660_i0, &W_3660_i1, &W_3660_i2, &W_3660_i3, &W_3660_i4,
+  &W_3660_i5, &W_3660_i6, &W_3660_i7, &W_3660_i8, &W_3660_i9
+};
+
+static const lv_image_dsc_t *const orange_digits_3660[] = {
+  &O_3660_i0, &O_3660_i1, &O_3660_i2, &O_3660_i3, &O_3660_i4,
+  &O_3660_i5, &O_3660_i6, &O_3660_i7, &O_3660_i8, &O_3660_i9
+};
+
+static const lv_image_dsc_t *const white_digits_1830[] = {
+  &W_1830_i0, &W_1830_i1, &W_1830_i2, &W_1830_i3, &W_1830_i4,
+  &W_1830_i5, &W_1830_i6, &W_1830_i7, &W_1830_i8, &W_1830_i9
+};
+
+static void set_digit(lv_obj_t *image, int number, const lv_image_dsc_t *const digits[])
+{
+  if(number < 0 || number > 9)
+  {
+    Serial.println("显示时钟数字错误");
+    return;
+  }
+  lv_image_set_src(image, digits[number]);
+}
+
 //显示白色36*60大小数字
 void WeatherPrintf::printfW3660(lv_obj_t* lv_obj,int numn)
 {
-  switch(numn)
-  {
-    case 0:
-      lv_img_set_src(lv_obj, &_W_3660_i0_alpha_36x60);
-      break;
-    case 1:
-      lv_img_set_src(lv_obj, &_W_3660_i1_alpha_36x60);
-      break;
-    case 2:
-      lv_img_set_src(lv_obj, &_W_3660_i2_alpha_36x60);
-      break;
-    case 3:
-      lv_img_set_src(lv_obj, &_W_3660_i3_alpha_36x60);
-      break;
-    case 4:
-      lv_img_set_src(lv_obj, &_W_3660_i4_alpha_36x60);
-      break;
-    case 5:
-      lv_img_set_src(lv_obj, &_W_3660_i5_alpha_36x60);
-      break;
-    case 6:
-      lv_img_set_src(lv_obj, &_W_3660_i6_alpha_36x60);
-      break;
-    case 7:
-      lv_img_set_src(lv_obj, &_W_3660_i7_alpha_36x60);
-      break;
-    case 8:
-      lv_img_set_src(lv_obj, &_W_3660_i8_alpha_36x60);
-      break;
-    case 9:
-      lv_img_set_src(lv_obj, &_W_3660_i9_alpha_36x60);
-      break;
-    default:
-      Serial.println("显示W_3660数字错误");
-      break;
-  }
+  set_digit(lv_obj, numn, white_digits_3660);
 }
 //显示橙色36*60大小数字
 void WeatherPrintf::printfO3660(lv_obj_t* lv_obj,int numn)
 {
-  switch(numn)
-  {
-    case 0:
-      lv_img_set_src(lv_obj, &_O_3660_i0_alpha_36x60);
-      break;
-    case 1:
-      lv_img_set_src(lv_obj, &_O_3660_i1_alpha_36x60);
-      break;
-    case 2:
-      lv_img_set_src(lv_obj, &_O_3660_i2_alpha_36x60);
-      break;
-    case 3:
-      lv_img_set_src(lv_obj, &_O_3660_i3_alpha_36x60);
-      break;
-    case 4:
-      lv_img_set_src(lv_obj, &_O_3660_i4_alpha_36x60);
-      break;
-    case 5:
-      lv_img_set_src(lv_obj, &_O_3660_i5_alpha_36x60);
-      break;
-    case 6:
-      lv_img_set_src(lv_obj, &_O_3660_i6_alpha_36x60);
-      break;
-    case 7:
-      lv_img_set_src(lv_obj, &_O_3660_i7_alpha_36x60);
-      break;
-    case 8:
-      lv_img_set_src(lv_obj, &_O_3660_i8_alpha_36x60);
-      break;
-    case 9:
-      lv_img_set_src(lv_obj, &_O_3660_i9_alpha_36x60);
-      break;
-    default:
-      Serial.println("显示O_3660数字错误");
-      break;
-  }
+  set_digit(lv_obj, numn, orange_digits_3660);
 }
+
 //显示白色18*30大小数字
 void WeatherPrintf::printfW1830(lv_obj_t* lv_obj,int numn)
 {
-  switch(numn)
-  {
-    case 0:
-      lv_img_set_src(lv_obj, &_W_1830_i0_alpha_18x30);
-      break;
-    case 1:
-      lv_img_set_src(lv_obj, &_W_1830_i1_alpha_18x30);
-      break;
-    case 2:
-      lv_img_set_src(lv_obj, &_W_1830_i2_alpha_18x30);
-      break;
-    case 3:
-      lv_img_set_src(lv_obj, &_W_1830_i3_alpha_18x30);
-      break;
-    case 4:
-      lv_img_set_src(lv_obj, &_W_1830_i4_alpha_18x30);
-      break;
-    case 5:
-      lv_img_set_src(lv_obj, &_W_1830_i5_alpha_18x30);
-      break;
-    case 6:
-      lv_img_set_src(lv_obj, &_W_1830_i6_alpha_18x30);
-      break;
-    case 7:
-      lv_img_set_src(lv_obj, &_W_1830_i7_alpha_18x30);
-      break;
-    case 8:
-      lv_img_set_src(lv_obj, &_W_1830_i8_alpha_18x30);
-      break;
-    case 9:
-      lv_img_set_src(lv_obj, &_W_1830_i9_alpha_18x30);
-      break;
-    default:
-      Serial.println("显示O_1830数字错误");
-      break;
-  }
+  set_digit(lv_obj, numn, white_digits_1830);
 }
 
 //显示天气图标

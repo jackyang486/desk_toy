@@ -35,9 +35,9 @@ void wifi_udp_init(){
   setSyncProvider(getNtpTime);
   setSyncInterval(300);
   //字体初始化
-  lv_obj_set_style_text_font(guider_ui.screen_label_weather_banner, &font_puhui_16_4,  LV_PART_MAIN|LV_STATE_DEFAULT);
-  lv_obj_set_style_text_font(guider_ui.screen_label_city, &font_puhui_16_4, LV_PART_MAIN|LV_STATE_DEFAULT);
-  lv_obj_set_style_text_font(guider_ui.screen_label_qulaity, &font_puhui_16_4, LV_PART_MAIN|LV_STATE_DEFAULT);
+  lv_obj_set_style_text_font(guider_ui.screen_weather_label_weather_banner, &font_puhui_16_4,  LV_PART_MAIN|LV_STATE_DEFAULT);
+  lv_obj_set_style_text_font(guider_ui.screen_weather_label_city, &font_puhui_16_4, LV_PART_MAIN|LV_STATE_DEFAULT);
+  lv_obj_set_style_text_font(guider_ui.screen_weather_label_qulaity, &font_puhui_16_4, LV_PART_MAIN|LV_STATE_DEFAULT);
   vTaskDelay(pdMS_TO_TICKS(500));    
 }
 /*-------- NTP code ----------*/
@@ -98,14 +98,12 @@ void sendNTPpacket(IPAddress &address)
 void slide_switch(lv_obj_t *frontImg,lv_obj_t *backImg,TIME_TYPE time_type,int num)
 {
     lv_anim_t anim1, anim2;
+    lv_image_set_src(frontImg, lv_image_get_src(backImg));
     if(time_type == SECOND_TYPE){
-       lv_img_set_src(frontImg,lv_img_get_src(backImg));
        weatherPrintf.printfW1830(backImg,num);
     }else if(time_type == MINUTE_TYPE){
-       lv_img_set_src(frontImg,lv_img_get_src(backImg));
        weatherPrintf.printfO3660(backImg,num); 
     }else if(time_type == HOUR_TYPE){
-       lv_img_set_src(frontImg,lv_img_get_src(backImg));
        weatherPrintf.printfW3660(backImg,num);
     }
     // -------- 动画1：当前前景图 向上滑出 --------
@@ -230,24 +228,24 @@ void digitalClockDisplay(time_t nowTime)
 { 
   if(hour(nowTime)!=Hour_sign)//时钟刷新
   {
-    slide_switch(guider_ui.screen_img_hour_2,guider_ui.screen_img_hour_shi,HOUR_TYPE,hour(nowTime)/10);
-    slide_switch(guider_ui.screen_img_hour_1,guider_ui.screen_img_hour_ge,HOUR_TYPE,hour(nowTime)%10);
+    slide_switch(guider_ui.screen_weather_img_hour_2,guider_ui.screen_weather_img_hour_shi,HOUR_TYPE,hour(nowTime)/10);
+    slide_switch(guider_ui.screen_weather_img_hour_1,guider_ui.screen_weather_img_hour_ge,HOUR_TYPE,hour(nowTime)%10);
     Hour_sign = hour(nowTime);
   }
   if(minute(nowTime)!=Minute_sign)//分钟刷新
   {
-    slide_switch(guider_ui.screen_img_minute_2,guider_ui.screen_img_minute_shi,MINUTE_TYPE,minute(nowTime)/10);
-    slide_switch(guider_ui.screen_img_minute_1,guider_ui.screen_img_minute_ge,MINUTE_TYPE,minute(nowTime)%10);
+    slide_switch(guider_ui.screen_weather_img_minute_2,guider_ui.screen_weather_img_minute_shi,MINUTE_TYPE,minute(nowTime)/10);
+    slide_switch(guider_ui.screen_weather_img_minute_1,guider_ui.screen_weather_img_minute_ge,MINUTE_TYPE,minute(nowTime)%10);
     Minute_sign = minute(nowTime);
   }
   if(second(nowTime)!=Second_sign)//分钟刷新
   {
-    slide_switch(guider_ui.screen_img_second_2,guider_ui.screen_img_second_shi,SECOND_TYPE,second(nowTime)/10);
-    slide_switch(guider_ui.screen_img_second_1,guider_ui.screen_img_second_ge,SECOND_TYPE,second(nowTime)%10);
+    slide_switch(guider_ui.screen_weather_img_second_2,guider_ui.screen_weather_img_second_shi,SECOND_TYPE,second(nowTime)/10);
+    slide_switch(guider_ui.screen_weather_img_second_1,guider_ui.screen_weather_img_second_ge,SECOND_TYPE,second(nowTime)%10);
     Second_sign = second(nowTime);
   }
-  lv_label_set_text(guider_ui.screen_label_year_month,YearMonthDay().c_str());
-  lv_label_set_text(guider_ui.screen_label_week,week().c_str());
+  lv_label_set_text(guider_ui.screen_weather_label_year_month,YearMonthDay().c_str());
+  lv_label_set_text(guider_ui.screen_weather_label_week,week().c_str());
 }
 
 
@@ -262,47 +260,47 @@ void weaterData(String *cityDZ,String *dataSK,String *dataFC)
   deserializeJson(skDoc, *dataSK);
   JsonObject sk = skDoc.as<JsonObject>();
   
-  lv_obj_invalidate(guider_ui.screen);
+  lv_obj_invalidate(guider_ui.screen_weather);
 
   //设置温度
   int tempnum = sk["temp"].as<int>();
   tempnum = tempnum+10;
   String tempStr = sk["temp"].as<String>()+"℃";
-  lv_label_set_text(guider_ui.screen_label_temp,tempStr.c_str());
-  lv_bar_set_value(guider_ui.screen_bar_temp,tempnum, LV_ANIM_OFF);
+  lv_label_set_text(guider_ui.screen_weather_label_temp,tempStr.c_str());
+  lv_bar_set_value(guider_ui.screen_weather_bar_temp,tempnum, LV_ANIM_OFF);
 
   //设置湿度
   int humidity = atoi((sk["SD"].as<String>()).substring(0,2).c_str());
-  lv_bar_set_value(guider_ui.screen_bar_hum,humidity, LV_ANIM_OFF);
+  lv_bar_set_value(guider_ui.screen_weather_bar_hum,humidity, LV_ANIM_OFF);
   char humBuf[10] = {0};
   sprintf(humBuf,"%d%%",humidity);
-  lv_label_set_text(guider_ui.screen_label_hum, humBuf);
+  lv_label_set_text(guider_ui.screen_weather_label_hum, humBuf);
 
 
   //设置城市
-  lv_label_set_text(guider_ui.screen_label_city,sk["cityname"].as<String>().c_str());
+  lv_label_set_text(guider_ui.screen_weather_label_city,sk["cityname"].as<String>().c_str());
 
   //设置PM2.5空气指数
   String aqiTxt = "优";
   int pm25V = sk["aqi"];
   if(pm25V>200){
     aqiTxt = "重度";
-    lv_obj_set_style_bg_color(guider_ui.screen_label_qulaity, lv_color_make(136,11,32), LV_PART_MAIN|LV_STATE_DEFAULT);
+    lv_obj_set_style_bg_color(guider_ui.screen_weather_label_qulaity, lv_color_make(136,11,32), LV_PART_MAIN|LV_STATE_DEFAULT);
   }else if(pm25V>150){
     aqiTxt = "中度";
-    lv_obj_set_style_bg_color(guider_ui.screen_label_qulaity, lv_color_make(186,55,121), LV_PART_MAIN|LV_STATE_DEFAULT);
+    lv_obj_set_style_bg_color(guider_ui.screen_weather_label_qulaity, lv_color_make(186,55,121), LV_PART_MAIN|LV_STATE_DEFAULT);
   }else if(pm25V>100){
     aqiTxt = "轻度";
-    lv_obj_set_style_bg_color(guider_ui.screen_label_qulaity, lv_color_make(242,159,57), LV_PART_MAIN|LV_STATE_DEFAULT);
+    lv_obj_set_style_bg_color(guider_ui.screen_weather_label_qulaity, lv_color_make(242,159,57), LV_PART_MAIN|LV_STATE_DEFAULT);
   }else if(pm25V>50){
     aqiTxt = "良";
-    lv_obj_set_style_bg_color(guider_ui.screen_label_qulaity, lv_color_make(247,219,100), LV_PART_MAIN|LV_STATE_DEFAULT);
+    lv_obj_set_style_bg_color(guider_ui.screen_weather_label_qulaity, lv_color_make(247,219,100), LV_PART_MAIN|LV_STATE_DEFAULT);
   }
-  lv_label_set_text(guider_ui.screen_label_qulaity,aqiTxt.c_str());
+  lv_label_set_text(guider_ui.screen_weather_label_qulaity,aqiTxt.c_str());
 
   //天气图标
   int numw = atoi((sk["weathercode"].as<String>()).substring(1,3).c_str()); 
-  weatherPrintf.printfweather(guider_ui.screen_img_weather0,numw);
+  weatherPrintf.printfweather(guider_ui.screen_weather_img_weather0,numw);
   //解析第二段JSON
   deserializeJson(dzDoc, *cityDZ);
   JsonObject dz = dzDoc.as<JsonObject>();
@@ -320,11 +318,9 @@ void weaterData(String *cityDZ,String *dataSK,String *dataFC)
     fc["fd"].as<const char*>(),
     fc["fc"].as<const char*>()
   );
-  lv_label_set_text(guider_ui.screen_label_weather_banner,weatherBuf);
-  lv_label_set_long_mode(guider_ui.screen_label_weather_banner, LV_LABEL_LONG_SCROLL);
+  lv_label_set_text(guider_ui.screen_weather_label_weather_banner,weatherBuf);
+  lv_label_set_long_mode(guider_ui.screen_weather_label_weather_banner, LV_LABEL_LONG_SCROLL);
   
-  lv_obj_invalidate(guider_ui.screen);
+  lv_obj_invalidate(guider_ui.screen_weather);
 }
-
-
 

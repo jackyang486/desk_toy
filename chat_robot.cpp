@@ -48,6 +48,8 @@ static const std::vector<std::string> kEmotionOrder = {
 };
 
 
+
+
 // /**
 //  * @brief 初始化聊天泡泡样式 (只需调用一次)
 //  */
@@ -241,7 +243,7 @@ void InitMcpTools() {
 }
 
 void SetEmotion(const std::string& emotion) {
-  if (guider_ui.robot_win == nullptr) {
+  if (guider_ui.screen_robot == nullptr) {
     return;
   }
 
@@ -274,8 +276,8 @@ void SetEmotion(const std::string& emotion) {
   const char* image_path = (it != emotion_map.end()) ? it->second : "S:/image/neutral.jpg";
 
   if (g_current_emotion != normalized) {
-    lv_obj_set_style_bg_img_src(guider_ui.robot_win, image_path, LV_PART_MAIN | LV_STATE_DEFAULT);
-    lv_obj_set_style_bg_img_opa(guider_ui.robot_win, 255, LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_bg_img_src(guider_ui.screen_robot, image_path, LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_bg_image_opa(guider_ui.screen_robot, 255, LV_PART_MAIN | LV_STATE_DEFAULT);
     g_current_emotion = normalized;
   }
 }
@@ -329,9 +331,7 @@ void chat_init() {
                                     {"Authorization", "Bearer test-token"},
                                 });
 
-  printf("engine starting\n");
   ai_vox_engine.Start(board.getAudioDeviceEs8311(), board.getAudioDeviceEs8311());
-  printf("engine started\n");
 
   ESP_ERROR_CHECK(iot_button_register_cb(
       g_button_boot_handle,
@@ -342,28 +342,28 @@ void chat_init() {
         ai_vox::Engine::GetInstance().Advance();
       },
       nullptr));
-   lv_obj_set_style_text_font(guider_ui.robot_win_label_status, &font_puhui_16_4, LV_PART_MAIN|LV_STATE_DEFAULT);  //lv_font_source_han_sans_normal_16
+   lv_obj_set_style_text_font(guider_ui.screen_robot_label_status, &font_puhui_16_4, LV_PART_MAIN|LV_STATE_DEFAULT);  //lv_font_source_han_sans_normal_16
 
    // 长按必须绑定到真正可交互的对象，并允许事件冒泡到父对象，否则容器在某些页面状态下不会触发。
-    lv_obj_add_flag(guider_ui.robot_win_cont_msg, LV_OBJ_FLAG_CLICKABLE);
-   lv_obj_add_flag(guider_ui.robot_win_cont_msg, LV_OBJ_FLAG_GESTURE_BUBBLE);
-   lv_obj_add_flag(guider_ui.robot_win_cont_msg, LV_OBJ_FLAG_PRESS_LOCK);
-   lv_obj_add_event_cb(guider_ui.robot_win_cont_msg, RobotWinLongPressCb, LV_EVENT_LONG_PRESSED, nullptr);
+   lv_obj_add_flag(guider_ui.screen_robot_cont_msg, LV_OBJ_FLAG_CLICKABLE);
+   lv_obj_add_flag(guider_ui.screen_robot_cont_msg, LV_OBJ_FLAG_GESTURE_BUBBLE);
+   lv_obj_add_flag(guider_ui.screen_robot_cont_msg, LV_OBJ_FLAG_PRESS_LOCK);
+   lv_obj_add_event_cb(guider_ui.screen_robot_cont_msg, RobotWinLongPressCb, LV_EVENT_LONG_PRESSED, nullptr);
 
-   lv_obj_add_flag(guider_ui.robot_win, LV_OBJ_FLAG_CLICKABLE);
-   lv_obj_add_flag(guider_ui.robot_win, LV_OBJ_FLAG_GESTURE_BUBBLE);
-   lv_obj_add_event_cb(guider_ui.robot_win, RobotWinLongPressCb, LV_EVENT_LONG_PRESSED, nullptr);
+   //lv_obj_add_flag(guider_ui.screen_robot, LV_OBJ_FLAG_CLICKABLE);
+   //lv_obj_add_flag(guider_ui.screen_robot, LV_OBJ_FLAG_GESTURE_BUBBLE);
+   //lv_obj_add_event_cb(guider_ui.screen_robot, RobotWinLongPressCb, LV_EVENT_LONG_PRESSED, nullptr);
 
    // 初始化聊天列表容器时
-  //lv_obj_set_flex_grow(guider_ui.robot_win_cont_msg, 1);
-  //lv_obj_set_flex_flow(guider_ui.robot_win_cont_msg, LV_FLEX_FLOW_COLUMN); // 垂直排列
-  //lv_obj_set_flex_align(guider_ui.robot_win_cont_msg,LV_FLEX_ALIGN_START,LV_FLEX_ALIGN_START,LV_FLEX_ALIGN_START);
-  //lv_obj_set_scrollbar_mode(guider_ui.robot_win_cont_msg, LV_SCROLLBAR_MODE_OFF);
-  //lv_obj_set_scroll_dir(guider_ui.robot_win_cont_msg, LV_DIR_VER); // 允许垂直滚动      
+  //lv_obj_set_flex_grow(guider_ui.screen_robot_cont_msg, 1);
+  //lv_obj_set_flex_flow(guider_ui.screen_robot_cont_msg, LV_FLEX_FLOW_COLUMN); // 垂直排列
+  //lv_obj_set_flex_align(guider_ui.screen_robot_cont_msg,LV_FLEX_ALIGN_START,LV_FLEX_ALIGN_START,LV_FLEX_ALIGN_START);
+  //lv_obj_set_scrollbar_mode(guider_ui.screen_robot_cont_msg, LV_SCROLLBAR_MODE_OFF);
+  //lv_obj_set_scroll_dir(guider_ui.screen_robot_cont_msg, LV_DIR_VER); // 允许垂直滚动      
   //emoji
-  //lv_img_set_src(guider_ui.robot_win_img_emoji, &_neutral_alpha_32x32);
+  //lv_img_set_src(guider_ui.screen_robot_img_emoji, &_neutral_alpha_32x32);
   /* ---- 创建 Toast 容器 ---- */
-    chat_label = lv_obj_create(guider_ui.robot_win_cont_msg);
+    chat_label = lv_obj_create(guider_ui.screen_robot_cont_msg);
     lv_obj_remove_style_all(chat_label);              /* 清除默认样式 */
     lv_obj_set_size(chat_label, LV_PCT(86), LV_SIZE_CONTENT); /* 宽度更长，形成长方形 */
     lv_obj_set_style_bg_color(chat_label, lv_color_black(), 0);
@@ -391,6 +391,8 @@ void chat_init() {
     /* 根据文本自适应大小 */
     lv_obj_update_layout(chat_label);
 
+    SetEmotion("sleepy");
+
 }
 
 void chat_loop() {
@@ -403,7 +405,7 @@ void chat_loop() {
       printf("on text received: %s\n", text_received_event->content.c_str());
     } else if (auto activation_event = std::get_if<ai_vox::ActivationEvent>(&event)) {
       printf("activation code: %s, message: %s\n", activation_event->code.c_str(), activation_event->message.c_str());
-      lv_label_set_text(guider_ui.robot_win_label_status,activation_event->code.c_str());
+      lv_label_set_text(guider_ui.screen_robot_label_status,activation_event->code.c_str());
     } else if (auto state_changed_event = std::get_if<ai_vox::StateChangedEvent>(&event)) {
       printf("state changed from %" PRIu8 " to %" PRIu8 "\n",
              static_cast<uint8_t>(state_changed_event->old_state),
@@ -411,7 +413,7 @@ void chat_loop() {
       switch (state_changed_event->new_state) {
         case ai_vox::ChatState::kIdle: {
           printf("Idle\n");
-          lv_label_set_text(guider_ui.robot_win_label_status,"空闲中...");
+          lv_label_set_text(guider_ui.screen_robot_label_status,"空闲中...");
           break;
         }
         case ai_vox::ChatState::kInitted: {
@@ -421,32 +423,32 @@ void chat_loop() {
         }
         case ai_vox::ChatState::kLoading: {
           printf("Loading...\n");
-          lv_label_set_text(guider_ui.robot_win_label_status,"加载中...");
+          lv_label_set_text(guider_ui.screen_robot_label_status,"加载中...");
           break;
         }
         case ai_vox::ChatState::kLoadingFailed: {
           printf("Loading failed, please retry\n");
-          lv_label_set_text(guider_ui.robot_win_label_status,"加载失败...");
+          lv_label_set_text(guider_ui.screen_robot_label_status,"加载失败...");
           break;
         }
         case ai_vox::ChatState::kStandby: {
           printf("Standby\n");
-          lv_label_set_text(guider_ui.robot_win_label_status,"待命中...");
+          lv_label_set_text(guider_ui.screen_robot_label_status,"待命中...");
           break;
         }
         case ai_vox::ChatState::kConnecting: {
           printf("Connecting...\n");
-          lv_label_set_text(guider_ui.robot_win_label_status,"连接中...");
+          lv_label_set_text(guider_ui.screen_robot_label_status,"连接中...");
           break;
         }
         case ai_vox::ChatState::kListening: {
           printf("Listening...\n");
-          lv_label_set_text(guider_ui.robot_win_label_status,"聆听中...");
+          lv_label_set_text(guider_ui.screen_robot_label_status,"聆听中...");
           break;
         }
         case ai_vox::ChatState::kSpeaking: {
           printf("Speaking...\n");
-          lv_label_set_text(guider_ui.robot_win_label_status,"说话中...");
+          lv_label_set_text(guider_ui.screen_robot_label_status,"说话中...");
           break;
         }
         default: {
@@ -460,15 +462,15 @@ void chat_loop() {
       switch (chat_message_event->role) {
         case ai_vox::ChatRole::kAssistant: {
           printf("role: assistant, content: %s\n", chat_message_event->content.c_str());
-          //lv_label_set_text(guider_ui.robot_win_chat_out_put,chat_message_event->content.c_str());
-          //add_chat_message(guider_ui.robot_win_cont_msg,chat_message_event->content.c_str(),MSG_TYPE_OTHER);
+          //lv_label_set_text(guider_ui.screen_robot_chat_out_put,chat_message_event->content.c_str());
+          //add_chat_message(guider_ui.screen_robot_cont_msg,chat_message_event->content.c_str(),MSG_TYPE_OTHER);
           lv_label_set_text(msg_label,chat_message_event->content.c_str());
           break;
         }
         case ai_vox::ChatRole::kUser: {
           printf("role: user, content: %s\n", chat_message_event->content.c_str());
-          //lv_label_set_text(guider_ui.robot_win_label_chat_input,chat_message_event->content.c_str());
-          //add_chat_message(guider_ui.robot_win_cont_msg,chat_message_event->content.c_str(),MSG_TYPE_SELF);
+          //lv_label_set_text(guider_ui.screen_robot_label_chat_input,chat_message_event->content.c_str());
+          //add_chat_message(guider_ui.screen_robot_cont_msg,chat_message_event->content.c_str(),MSG_TYPE_SELF);
           lv_label_set_text(msg_label,chat_message_event->content.c_str());
           break;
         }

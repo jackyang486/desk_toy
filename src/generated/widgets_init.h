@@ -20,10 +20,12 @@ __attribute__((unused)) void kb_event_cb(lv_event_t *e);
 __attribute__((unused)) void ta_event_cb(lv_event_t *e);
 #if LV_USE_ANALOGCLOCK != 0
 void clock_count(int *hour, int *min, int *sec);
+void digital_clock_count(int * hour, int * minute, int * seconds, char * meridiem);
 #endif
 
 
-extern const lv_img_dsc_t * screen_animimg_1_imgs[10];
+extern const lv_image_dsc_t * screen_weather_animimg_astronaut_imgs[10];
+
 
 #ifdef __cplusplus
 }
