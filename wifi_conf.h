@@ -13,7 +13,6 @@ class wifi_config{
     bool scan_finished;
     static void wifi_list_click_event(lv_event_t *e);
   public:
-    SemaphoreHandle_t wifi_sem_ = nullptr;
     static wifi_config& GetInstance();
     void initial();
     void screen_load();

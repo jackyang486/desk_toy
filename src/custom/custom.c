@@ -108,6 +108,8 @@ void screen_load_execute(lv_obj_t *obj,SCREEN_LOAD_STAUS loadStatus){
         screen_load_method->radio_screen_load(loadStatus);
     }else if(obj == guider_ui.screen_mouse){
         screen_load_method->fly_mouse_screen_load(loadStatus);
+    }else if(obj == guider_ui.screen_anim){
+        screen_load_method->lottie_screen_load(loadStatus);
     }
 
 

@@ -273,6 +273,7 @@ LV_IMG_DECLARE(t99);
 LV_IMAGE_DECLARE(_confident_240x320_RGB565A8_240x320);
 #define LV_LOT_DECLARE(array_name) extern const uint8_t array_name[];
 LV_LOT_DECLARE(lottie_CuteJumping);
+LV_LOT_DECLARE(lottie_happy);
 LV_IMAGE_DECLARE(_photo_img2_RGB565A8_50x50);
 LV_IMAGE_DECLARE(_mouse_RGB565A8_50x50);
 LV_IMAGE_DECLARE(_radio_img2_RGB565A8_50x50);

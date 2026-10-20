@@ -35,6 +35,7 @@ typedef struct {
     screen_load_callback_t music_screen_load;
     screen_load_callback_t setting_screen_load;
     screen_load_callback_t radio_screen_load;
+    screen_load_callback_t lottie_screen_load;
 }screen_load;
 
 

@@ -46,7 +46,8 @@ constexpr uint32_t kAudioSampleRate = 16000;
 
 typedef enum {
   IMG_TYPE,
-  MP3_TYPE
+  MP3_TYPE,
+  JSON_TYPE
 } FILE_TYPE; 
 
 typedef struct WifiInfo {
