@@ -27,9 +27,9 @@ void setup_scr_screen_anim(lv_ui *ui)
     lv_obj_set_style_bg_opa(ui->screen_anim, 0, LV_PART_MAIN|LV_STATE_DEFAULT);
 
     //Write codes screen_anim_rlottie_1
-    //ui->screen_anim_rlottie_1 = lv_rlottie_create_from_raw(ui->screen_anim, 240, 240, (const void *)lottie_CuteJumping);
-    //lv_obj_set_pos(ui->screen_anim_rlottie_1, 0, 30);
-    //lv_obj_set_size(ui->screen_anim_rlottie_1, 240, 240);
+    ui->screen_anim_rlottie_1 = lv_rlottie_create_from_raw(ui->screen_anim, 240, 240, (const void *)lottie_happy);
+    lv_obj_set_pos(ui->screen_anim_rlottie_1, 0, 30);
+    lv_obj_set_size(ui->screen_anim_rlottie_1, 240, 240);
 
     //Write style for screen_anim_rlottie_1, Part: LV_PART_MAIN, State: LV_STATE_DEFAULT.
     lv_obj_set_style_bg_opa(ui->screen_anim_rlottie_1, 0, LV_PART_MAIN|LV_STATE_DEFAULT);

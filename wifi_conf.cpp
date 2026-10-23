@@ -108,8 +108,6 @@ void  wifi_config::wifi_connect(const char* ssid, const char* pass){
         // 每100ms检查一次
       vTaskDelay(pdMS_TO_TICKS(500));
   }
-  printf("7、Free INTERNAL heap: %lu\n", heap_caps_get_free_size(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT));
-  printf("7、Largest INTERNAL free block: %lu\n", heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT));
 }
 
 // 1. WiFi列表点击事件：自动填充SSID到输入框
@@ -125,9 +123,6 @@ void wifi_config::wifi_list_click_event(lv_event_t *e) {
 //主屏加载后,自动连接wifi
 void wifi_config::main_sreen_loaded_task(){
     // 创建信号量
-    if (wifi_sem_ == nullptr) {
-        wifi_sem_ = xSemaphoreCreateBinary();
-    }
     xTaskCreate([](void *arg){
      auto *p = static_cast<wifi_config*>(arg);
     if(WiFi.status() == WL_CONNECTED){ //如果是已经连接上了，则显示IP
@@ -135,8 +130,8 @@ void wifi_config::main_sreen_loaded_task(){
          lv_label_set_text(guider_ui.screen_weather_ip_address, ipAddrss.c_str());
          lv_obj_clear_flag(guider_ui.screen_weather_wifi_icon, LV_OBJ_FLAG_HIDDEN);
          lv_obj_add_flag(guider_ui.screen_weather_no_wifi_icon, LV_OBJ_FLAG_HIDDEN);
-         wifi_udp_init();
-         xSemaphoreGive(p->wifi_sem_);
+          wifi_udp_init();
+          weather_page_load(true);
      }else{
          lv_obj_set_style_text_font(guider_ui.screen_weather_ip_address, &font_puhui_16_4, LV_PART_MAIN|LV_STATE_DEFAULT);
          auto& setting = Setting::GetInstance();
@@ -151,21 +146,17 @@ void wifi_config::main_sreen_loaded_task(){
               lv_obj_add_flag(guider_ui.screen_weather_no_wifi_icon, LV_OBJ_FLAG_HIDDEN);
               vTaskDelay(pdMS_TO_TICKS(200));
               wifi_udp_init();
-              xSemaphoreGive(p->wifi_sem_);
+              weather_page_load(true);
             } else {
-              xSemaphoreGive(p->wifi_sem_);
               lv_label_set_text(guider_ui.screen_weather_ip_address,"WIFI连接失败");
             }
         }else{
-             xSemaphoreGive(p->wifi_sem_);
              lv_label_set_text(guider_ui.screen_weather_ip_address,"请配置WIFI");
         }
      }
      // 退出任务
     vTaskDelete(NULL);
    }, "main_sreen_loaded_task", 4096*4,this, 2, NULL);
-  weather_page_load(true);
-
 }
 //=========== 主屏加载完成时间 ==========
 void main_sreen_loaded(SCREEN_LOAD_STAUS loadStatus){

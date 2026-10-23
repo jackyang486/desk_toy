@@ -1,1 +1,1 @@
-GEN_CSRCS += lottie_CuteJumping.c
+GEN_CSRCS += lottie_happy.c

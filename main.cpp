@@ -6,6 +6,7 @@
 #include <Preferences.h>
 #include <TimeLib.h>
 #include <esp_heap_caps.h>
+#include <esp32-hal-psram.h>
 #include "src/generated/gui_guider.h"
 #include "src/generated/events_init.h"
 #include "src/custom/custom.h"
@@ -17,6 +18,7 @@
 #include "ESP32_board.h"
 #include "setting.h"
 #include "radio.h"
+#include "lottie.h"
 //#include "fly_mouse.h"
 #include <vector>
 
@@ -25,10 +27,6 @@
 #define TOUCH_FT6336_RST 18
 #define DRAW_BUF_SIZE (240 * 320)  
 
-
-
-static const uint16_t screenWidth  = 240;
-static const uint16_t screenHeight = 320;
 static lv_display_t *display = NULL;
 static lv_color_t *buf1 = NULL;
 static lv_color_t *buf2 = NULL;
@@ -44,6 +42,28 @@ FT6336U_TouchPointType tp;
 #define SCREEN_TIMEOUT_MS 60000
 static unsigned long last_touch_time = 0;
 static bool screen_on = true;
+
+extern "C" {
+    void lv_mem_init(void)
+    {
+        // PSRAM allocator requires no initialization.
+    }
+
+    void* lv_malloc_core(size_t size)
+    {
+        return ps_malloc(size);
+    }
+
+    void lv_free_core(void* ptr)
+    {
+        heap_caps_free(ptr);
+    }
+
+    void* lv_realloc_core(void* ptr, size_t new_size)
+    {
+        return ps_realloc(ptr, new_size);
+    }
+}
 
 /* Display flushing */
 void my_disp_flush(lv_display_t *disp, const lv_area_t *area, uint8_t *color_p)
@@ -95,17 +115,8 @@ void lvgl_user_init(void)
     delay(10);
 
     const size_t draw_buf_bytes = DRAW_BUF_SIZE * sizeof(lv_color_t);
-    printf("[MEM] PSRAM total=%u free=%u, internal free=%u, largest DMA block=%u, draw buffer=%u each\n",
-           static_cast<unsigned>(ESP.getPsramSize()),
-           static_cast<unsigned>(heap_caps_get_free_size(MALLOC_CAP_SPIRAM)),
-           static_cast<unsigned>(heap_caps_get_free_size(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT)),
-           static_cast<unsigned>(heap_caps_get_largest_free_block(MALLOC_CAP_DMA)),
-           static_cast<unsigned>(draw_buf_bytes));
-
-    buf1 = static_cast<lv_color_t*>(heap_caps_malloc(
-        draw_buf_bytes, MALLOC_CAP_SPIRAM | MALLOC_CAP_DMA));
-    buf2 = static_cast<lv_color_t*>(heap_caps_malloc(
-        draw_buf_bytes, MALLOC_CAP_SPIRAM | MALLOC_CAP_DMA));
+    buf1 = static_cast<lv_color_t*>(heap_caps_malloc(draw_buf_bytes, MALLOC_CAP_SPIRAM)); //| MALLOC_CAP_DMA
+    buf2 = static_cast<lv_color_t*>(heap_caps_malloc(draw_buf_bytes, MALLOC_CAP_SPIRAM));
     if (buf1 == nullptr || buf2 == nullptr) {
         printf("[MEM] LVGL draw buffer allocation failed (buf1=%p, buf2=%p)\n",
                static_cast<void*>(buf1), static_cast<void*>(buf2));
@@ -120,12 +131,7 @@ void lvgl_user_init(void)
         abort();
     }
     lv_display_set_flush_cb(display, my_disp_flush);
-    lv_display_set_buffers(
-        display,
-        buf1,
-        buf2,
-        DRAW_BUF_SIZE * sizeof(lv_color_t),
-        LV_DISPLAY_RENDER_MODE_PARTIAL);
+    lv_display_set_buffers(display,buf1,buf2,DRAW_BUF_SIZE * sizeof(lv_color_t),LV_DISPLAY_RENDER_MODE_PARTIAL);
 
     lv_indev_t *indev = lv_indev_create();
     if (indev == nullptr) {
@@ -145,11 +151,18 @@ void lvgl_user_init(void)
     lv_screen_param.music_screen_load = music_player_load;
     lv_screen_param.setting_screen_load = setting_win_load;
     lv_screen_param.radio_screen_load = radio_win_load;
+    lv_screen_param.lottie_screen_load = lottie_page_load;
     screen_load_register(&lv_screen_param);
 
     setup_ui(&guider_ui);
     events_init(&guider_ui);
     custom_init(&guider_ui);    
+    printf("[MEM] PSRAM total=%u free=%u, internal free=%u, largest DMA block=%u, draw buffer=%u each\n",
+           static_cast<unsigned>(ESP.getPsramSize()),
+           static_cast<unsigned>(heap_caps_get_free_size(MALLOC_CAP_SPIRAM)),
+           static_cast<unsigned>(heap_caps_get_free_size(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT)),
+           static_cast<unsigned>(heap_caps_get_largest_free_block(MALLOC_CAP_DMA)),
+           static_cast<unsigned>(draw_buf_bytes));
 }
 
 static void ui_task(void *parameter);
@@ -167,7 +180,7 @@ void setup() {
   const BaseType_t task_result = xTaskCreatePinnedToCore(
       ui_task,
       "uiTask",
-      20 * 1024,
+      40 * 1024,
       nullptr,
       1,
       nullptr,
@@ -176,12 +189,14 @@ void setup() {
       printf("[TASK] Failed to create UI task\n");
       abort();
   }
+  printf("Free INTERNAL heap: %lu\n", heap_caps_get_free_size(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT));
+  printf("Largest INTERNAL free block: %lu\n", heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT));
 }
 time_t prevDisplay = 0; // 显示时间
 static void ui_task(void *parameter) {
     (void)parameter;
     uint32_t last_resource_log = 0;
-    for (;;) {
+    while(1) {
         lv_timer_handler();
         delay(5);
         if (time_enable && now() != prevDisplay) {

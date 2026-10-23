@@ -15,7 +15,6 @@
 #include "../custom/custom.h"
 
 
-
 void setup_scr_screen_radio(lv_ui *ui)
 {
     //Write codes screen_radio
@@ -25,36 +24,13 @@ void setup_scr_screen_radio(lv_ui *ui)
 
     //Write style for screen_radio, Part: LV_PART_MAIN, State: LV_STATE_DEFAULT.
     lv_obj_set_style_bg_opa(ui->screen_radio, 255, LV_PART_MAIN|LV_STATE_DEFAULT);
-    lv_obj_set_style_bg_color(ui->screen_radio, lv_color_hex(0xF5D9A8), LV_PART_MAIN|LV_STATE_DEFAULT);
+    lv_obj_set_style_bg_color(ui->screen_radio, lv_color_hex(0xd1e8f9), LV_PART_MAIN|LV_STATE_DEFAULT);
     lv_obj_set_style_bg_grad_dir(ui->screen_radio, LV_GRAD_DIR_NONE, LV_PART_MAIN|LV_STATE_DEFAULT);
-
-    //Write codes screen_radio_label_1
-    ui->screen_radio_label_1 = lv_label_create(ui->screen_radio);
-    lv_obj_set_pos(ui->screen_radio_label_1, 0, 0);
-    lv_obj_set_size(ui->screen_radio_label_1, 240, 20);
-    lv_label_set_text(ui->screen_radio_label_1, "");
-    lv_label_set_long_mode(ui->screen_radio_label_1, LV_LABEL_LONG_WRAP);
-
-    //Write style for screen_radio_label_1, Part: LV_PART_MAIN, State: LV_STATE_DEFAULT.
-    lv_obj_set_style_border_width(ui->screen_radio_label_1, 0, LV_PART_MAIN|LV_STATE_DEFAULT);
-    lv_obj_set_style_radius(ui->screen_radio_label_1, 0, LV_PART_MAIN|LV_STATE_DEFAULT);
-    lv_obj_set_style_text_color(ui->screen_radio_label_1, lv_color_hex(0x000000), LV_PART_MAIN|LV_STATE_DEFAULT);
-    lv_obj_set_style_text_font(ui->screen_radio_label_1, &lv_font_montserratMedium_16, LV_PART_MAIN|LV_STATE_DEFAULT);
-    lv_obj_set_style_text_opa(ui->screen_radio_label_1, 255, LV_PART_MAIN|LV_STATE_DEFAULT);
-    lv_obj_set_style_text_letter_space(ui->screen_radio_label_1, 0, LV_PART_MAIN|LV_STATE_DEFAULT);
-    lv_obj_set_style_text_line_space(ui->screen_radio_label_1, 0, LV_PART_MAIN|LV_STATE_DEFAULT);
-    lv_obj_set_style_text_align(ui->screen_radio_label_1, LV_TEXT_ALIGN_LEFT, LV_PART_MAIN|LV_STATE_DEFAULT);
-    lv_obj_set_style_bg_opa(ui->screen_radio_label_1, 0, LV_PART_MAIN|LV_STATE_DEFAULT);
-    lv_obj_set_style_pad_top(ui->screen_radio_label_1, 0, LV_PART_MAIN|LV_STATE_DEFAULT);
-    lv_obj_set_style_pad_right(ui->screen_radio_label_1, 0, LV_PART_MAIN|LV_STATE_DEFAULT);
-    lv_obj_set_style_pad_bottom(ui->screen_radio_label_1, 0, LV_PART_MAIN|LV_STATE_DEFAULT);
-    lv_obj_set_style_pad_left(ui->screen_radio_label_1, 0, LV_PART_MAIN|LV_STATE_DEFAULT);
-    lv_obj_set_style_shadow_width(ui->screen_radio_label_1, 0, LV_PART_MAIN|LV_STATE_DEFAULT);
 
     //Write codes screen_radio_list_radio
     ui->screen_radio_list_radio = lv_list_create(ui->screen_radio);
-    lv_obj_set_pos(ui->screen_radio_list_radio, 3, 25);
-    lv_obj_set_size(ui->screen_radio_list_radio, 234, 292);
+    lv_obj_set_pos(ui->screen_radio_list_radio, 3, 35);
+    lv_obj_set_size(ui->screen_radio_list_radio, 234, 285);
     lv_obj_set_scrollbar_mode(ui->screen_radio_list_radio, LV_SCROLLBAR_MODE_OFF);
 
     //Write style state: LV_STATE_DEFAULT for &style_screen_radio_list_radio_main_main_default

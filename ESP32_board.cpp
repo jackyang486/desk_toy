@@ -83,6 +83,10 @@ void Board::scanDir(const char *dirPath,std::vector<String> * filelist,FILE_TYPE
                      if(lower_name.find(".wav") != std::string::npos || lower_name.find(".mp3") != std::string::npos){
                         filelist->push_back(fname);
                      }
+                }else if(file_type == JSON_TYPE && len > 5){
+                    if(lower_name.compare(len - 5, 5, ".json") == 0){
+                        filelist->push_back(fname);
+                    }
                 }
             }
     }

@@ -367,7 +367,6 @@ void change_list_other_item_style(uint16_t idx) {
         int real_idx = (int)(uintptr_t)lv_obj_get_user_data(otherItem);
         if (real_idx == (int)idx) continue;
         lv_obj_set_style_bg_color(otherItem, lv_color_hex(0x343247), LV_PART_MAIN | LV_STATE_DEFAULT);
-        lv_img_set_src(icon, &_btn_play_RGB565A8_40x40);
     }
 }
 
@@ -396,7 +395,6 @@ void check_list_item(uint16_t idx,bool check) {
     if (selectItem) {
         lv_obj_set_style_bg_color(selectItem, lv_color_hex(0xc6a2a2), LV_PART_MAIN | LV_STATE_DEFAULT);
         lv_obj_t *icon = lv_obj_get_child(selectItem, 0);
-        lv_img_set_src(icon, &_btn_pause_RGB565A8_40x40);
     }
     if(check){
         change_list_other_item_style(idx);
@@ -421,26 +419,24 @@ void  Music_player::fill_music_list_panel(void) {
             lv_obj_t *btn = NULL;
             if(list_swipe_registered){  //已加载过了
                 btn = lv_obj_get_child(list, (i-list_start_index));
-                lv_obj_t *icon = lv_obj_get_child(btn,0);
                 lv_obj_t *label = lv_obj_get_child(btn,1);
                 lv_label_set_text(label,songName);
                 if(music_player.getCurrentMusic() == i){   //如果是播放中的歌曲，则改变背景色和按钮状态
                     lv_obj_set_style_bg_color(btn, lv_color_hex(0xc6a2a2), LV_PART_MAIN | LV_STATE_DEFAULT);
-                    lv_img_set_src(icon, &_btn_pause_RGB565A8_40x40);
                 }else{
                     lv_obj_set_style_bg_color(btn, lv_color_hex(0x343247), LV_PART_MAIN | LV_STATE_DEFAULT);
-                    lv_img_set_src(icon, &_btn_play_RGB565A8_40x40);
                 }
             }else{
-                btn = lv_list_add_btn(list, &_btn_play_RGB565A8_40x40, songName);
-                lv_obj_t *icon = lv_obj_get_child(btn, 0);
-                if (icon) lv_image_set_scale(icon, LV_SCALE_NONE / 2);
+                btn = lv_list_add_btn(list, &Music, songName);
+                //lv_obj_t *icon = lv_obj_get_child(btn, 0);
+                //if (icon) lv_image_set_scale(icon, LV_SCALE_NONE / 2);
                 lv_obj_set_style_bg_color(btn, lv_color_hex(0x343247), LV_PART_MAIN | LV_STATE_DEFAULT);
                 lv_obj_t *label = lv_obj_get_child(btn, 1);
                 if (label) {
-                        lv_obj_set_style_text_font(label, &font_puhui_16_4, LV_PART_MAIN | LV_STATE_DEFAULT);
-                        lv_obj_set_style_text_color(label, lv_color_hex(0xFFFFFF), LV_PART_MAIN | LV_STATE_DEFAULT);
+                    lv_obj_set_style_text_font(label, &font_puhui_16_4, LV_PART_MAIN | LV_STATE_DEFAULT);
+                    lv_obj_set_style_text_color(label, lv_color_hex(0xFFFFFF), LV_PART_MAIN | LV_STATE_DEFAULT);
                 }
+                lv_obj_set_height(btn, 35);
             }
             lv_obj_set_user_data(btn, (void*)(uintptr_t)i);
             lv_obj_add_event_cb(btn, music_list_item_click, LV_EVENT_LONG_PRESSED, (void*)(uintptr_t)i);
@@ -451,7 +447,7 @@ void music_list_swipe_event_handler(lv_event_t *e) {
     lv_event_code_t code = lv_event_get_code(e);
     if (code == LV_EVENT_SCROLL_BEGIN) {
         lv_indev_t *indev = lv_indev_get_act();
-        if (indev && lv_event_get_param(e) == NULL) {
+        if (indev) {
             lv_point_t point;
             lv_indev_get_point(indev, &point);
             if(!list_is_touching){
@@ -462,27 +458,28 @@ void music_list_swipe_event_handler(lv_event_t *e) {
     } else if (code == LV_EVENT_SCROLL_END) {
         if (!list_is_touching) return;
         list_is_touching = false;
-        lv_indev_t *indev = lv_indev_get_act();
-        if (indev && lv_event_get_param(e) == NULL) {
-            lv_point_t point;
-            lv_indev_get_point(indev, &point);
-            int16_t delta_y = music_player.getTouchStartY() - point.y;
-            if (abs(delta_y) > 20) {          //移动Y轴距离大于20个像素
-                int steps = delta_y / SWIPE_THRESHOLD;
-                if (steps != 0) {
-                    int list_start_index = music_player.getListStartIndex();
-                    int total = music_player.getMusicFilesSize();
-                    list_start_index += steps;
-                    if(list_start_index<0){
-                        list_start_index = 0;
-                    }
-                    if ((list_start_index + LIST_VISIBLE_ITEMS) > total) {
-                        list_start_index = total - LIST_VISIBLE_ITEMS;
-                        if (list_start_index < 0) list_start_index = 0;
-                    }
-                    music_player.setListStartIndex(list_start_index);
-                    music_player.fill_music_list_panel();
+        lv_indev_t *indev = static_cast<lv_indev_t *>(lv_event_get_param(e));
+        if (!indev) return;
+
+        lv_point_t point;
+        lv_indev_get_point(indev, &point);
+        int16_t delta_y = music_player.getTouchStartY() - point.y;
+        if (abs(delta_y) > SWIPE_THRESHOLD) {
+            int steps = delta_y / SWIPE_THRESHOLD;
+            if (steps != 0) {
+                int list_start_index = music_player.getListStartIndex();
+                int total = music_player.getMusicFilesSize();
+                list_start_index += steps;
+                if(list_start_index<0){
+                    list_start_index = 0;
                 }
+                if ((list_start_index + LIST_VISIBLE_ITEMS) > total) {
+                    list_start_index = total - LIST_VISIBLE_ITEMS;
+                    if (list_start_index < 0) list_start_index = 0;
+                }
+                music_player.setListStartIndex(list_start_index);
+                music_player.fill_music_list_panel();
+
             }
         }
     }

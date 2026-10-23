@@ -248,7 +248,7 @@ void setup_scr_screen_music(lv_ui *ui)
 
     //Write codes screen_music_top_img
     ui->screen_music_top_img = lv_image_create(ui->screen_music_player);
-    lv_obj_set_pos(ui->screen_music_top_img, 0, 0);
+    lv_obj_set_pos(ui->screen_music_top_img, 0, 3);
     lv_obj_set_size(ui->screen_music_top_img, 240, 34);
     lv_obj_add_flag(ui->screen_music_top_img, LV_OBJ_FLAG_CLICKABLE);
     lv_image_set_src(ui->screen_music_top_img, &_wave_top_RGB565A8_240x34);
@@ -302,7 +302,7 @@ void setup_scr_screen_music(lv_ui *ui)
 
     //Write codes screen_music_label_music_name
     ui->screen_music_label_music_name = lv_label_create(ui->screen_music_player);
-    lv_obj_set_pos(ui->screen_music_label_music_name, 25, 9);
+    lv_obj_set_pos(ui->screen_music_label_music_name, 25, 35);
     lv_obj_set_size(ui->screen_music_label_music_name, 180, 20);
     lv_label_set_text_static(ui->screen_music_label_music_name, "");
     lv_label_set_long_mode(ui->screen_music_label_music_name, LV_LABEL_LONG_SCROLL);

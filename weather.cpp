@@ -138,8 +138,6 @@ void slide_switch(lv_obj_t *frontImg,lv_obj_t *backImg,TIME_TYPE time_type,int n
 void data_fresh_task(void *pvParam){
   vTaskDelay(pdMS_TO_TICKS(500));
   auto& wifiConfig = wifi_config::GetInstance(); 
-  while(xSemaphoreTake(wifiConfig.wifi_sem_, 0) != pdTRUE) {
-  }
   while(time_enable && WiFi.status() == WL_CONNECTED){  
     getCityWeater("101250101");
     vTaskDelay(pdMS_TO_TICKS(300000));
