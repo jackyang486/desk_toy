@@ -26,36 +26,12 @@ void setup_scr_screen_wifi(lv_ui *ui)
     //Write style for screen_wifi, Part: LV_PART_MAIN, State: LV_STATE_DEFAULT.
     lv_obj_set_style_bg_opa(ui->screen_wifi, 0, LV_PART_MAIN|LV_STATE_DEFAULT);
 
-    //Write codes screen_wifi_list_title
-    ui->screen_wifi_list_title = lv_label_create(ui->screen_wifi);
-    lv_obj_set_pos(ui->screen_wifi_list_title, 0, 0);
-    lv_obj_set_size(ui->screen_wifi_list_title, 240, 20);
-    lv_label_set_text(ui->screen_wifi_list_title, "" LV_SYMBOL_LIST "  wifi list");
-    lv_label_set_long_mode(ui->screen_wifi_list_title, LV_LABEL_LONG_WRAP);
-
-    //Write style for screen_wifi_list_title, Part: LV_PART_MAIN, State: LV_STATE_DEFAULT.
-    lv_obj_set_style_border_width(ui->screen_wifi_list_title, 0, LV_PART_MAIN|LV_STATE_DEFAULT);
-    lv_obj_set_style_radius(ui->screen_wifi_list_title, 0, LV_PART_MAIN|LV_STATE_DEFAULT);
-    lv_obj_set_style_text_color(ui->screen_wifi_list_title, lv_color_hex(0x000000), LV_PART_MAIN|LV_STATE_DEFAULT);
-    lv_obj_set_style_text_font(ui->screen_wifi_list_title, &lv_font_montserratMedium_16, LV_PART_MAIN|LV_STATE_DEFAULT);
-    lv_obj_set_style_text_opa(ui->screen_wifi_list_title, 255, LV_PART_MAIN|LV_STATE_DEFAULT);
-    lv_obj_set_style_text_letter_space(ui->screen_wifi_list_title, 0, LV_PART_MAIN|LV_STATE_DEFAULT);
-    lv_obj_set_style_text_line_space(ui->screen_wifi_list_title, 0, LV_PART_MAIN|LV_STATE_DEFAULT);
-    lv_obj_set_style_text_align(ui->screen_wifi_list_title, LV_TEXT_ALIGN_LEFT, LV_PART_MAIN|LV_STATE_DEFAULT);
-    lv_obj_set_style_bg_opa(ui->screen_wifi_list_title, 255, LV_PART_MAIN|LV_STATE_DEFAULT);
-    lv_obj_set_style_bg_color(ui->screen_wifi_list_title, lv_color_hex(0xdbd9d9), LV_PART_MAIN|LV_STATE_DEFAULT);
-    lv_obj_set_style_bg_grad_dir(ui->screen_wifi_list_title, LV_GRAD_DIR_NONE, LV_PART_MAIN|LV_STATE_DEFAULT);
-    lv_obj_set_style_pad_top(ui->screen_wifi_list_title, 0, LV_PART_MAIN|LV_STATE_DEFAULT);
-    lv_obj_set_style_pad_right(ui->screen_wifi_list_title, 0, LV_PART_MAIN|LV_STATE_DEFAULT);
-    lv_obj_set_style_pad_bottom(ui->screen_wifi_list_title, 0, LV_PART_MAIN|LV_STATE_DEFAULT);
-    lv_obj_set_style_pad_left(ui->screen_wifi_list_title, 0, LV_PART_MAIN|LV_STATE_DEFAULT);
-    lv_obj_set_style_shadow_width(ui->screen_wifi_list_title, 0, LV_PART_MAIN|LV_STATE_DEFAULT);
-
     //Write codes screen_wifi_list
     ui->screen_wifi_list = lv_list_create(ui->screen_wifi);
-    lv_obj_set_pos(ui->screen_wifi_list, 0, 20);
-    lv_obj_set_size(ui->screen_wifi_list, 240, 300);
+    lv_obj_set_pos(ui->screen_wifi_list, 0, 35);
+    lv_obj_set_size(ui->screen_wifi_list, 240, 285);
     lv_obj_set_scrollbar_mode(ui->screen_wifi_list, LV_SCROLLBAR_MODE_OFF);
+    ui->screen_wifi_list_item0 = lv_list_add_button(ui->screen_wifi_list, LV_SYMBOL_SAVE, "save");
 
     //Write style state: LV_STATE_DEFAULT for &style_screen_wifi_list_main_main_default
     static lv_style_t style_screen_wifi_list_main_main_default;
@@ -99,6 +75,7 @@ void setup_scr_screen_wifi(lv_ui *ui)
     lv_style_set_bg_opa(&style_screen_wifi_list_extra_btns_main_default, 255);
     lv_style_set_bg_color(&style_screen_wifi_list_extra_btns_main_default, lv_color_hex(0xffffff));
     lv_style_set_bg_grad_dir(&style_screen_wifi_list_extra_btns_main_default, LV_GRAD_DIR_NONE);
+    lv_obj_add_style(ui->screen_wifi_list_item0, &style_screen_wifi_list_extra_btns_main_default, LV_PART_MAIN|LV_STATE_DEFAULT);
 
     //Write style state: LV_STATE_DEFAULT for &style_screen_wifi_list_extra_texts_main_default
     static lv_style_t style_screen_wifi_list_extra_texts_main_default;

@@ -28,34 +28,9 @@ void setup_scr_screen_setting(lv_ui *ui)
     lv_obj_set_style_bg_color(ui->screen_setting, lv_color_hex(0xd1e8f9), LV_PART_MAIN|LV_STATE_DEFAULT);
     lv_obj_set_style_bg_grad_dir(ui->screen_setting, LV_GRAD_DIR_NONE, LV_PART_MAIN|LV_STATE_DEFAULT);
 
-    //Write codes screen_setting_label_setting
-    ui->screen_setting_label_setting = lv_label_create(ui->screen_setting);
-    lv_obj_set_pos(ui->screen_setting_label_setting, 0, 0);
-    lv_obj_set_size(ui->screen_setting_label_setting, 240, 30);
-    lv_label_set_text(ui->screen_setting_label_setting, "" LV_SYMBOL_SETTINGS "  setting");
-    lv_label_set_long_mode(ui->screen_setting_label_setting, LV_LABEL_LONG_WRAP);
-
-    //Write style for screen_setting_label_setting, Part: LV_PART_MAIN, State: LV_STATE_DEFAULT.
-    lv_obj_set_style_border_width(ui->screen_setting_label_setting, 0, LV_PART_MAIN|LV_STATE_DEFAULT);
-    lv_obj_set_style_radius(ui->screen_setting_label_setting, 0, LV_PART_MAIN|LV_STATE_DEFAULT);
-    lv_obj_set_style_text_color(ui->screen_setting_label_setting, lv_color_hex(0x000000), LV_PART_MAIN|LV_STATE_DEFAULT);
-    lv_obj_set_style_text_font(ui->screen_setting_label_setting, &lv_font_montserratMedium_20, LV_PART_MAIN|LV_STATE_DEFAULT);
-    lv_obj_set_style_text_opa(ui->screen_setting_label_setting, 255, LV_PART_MAIN|LV_STATE_DEFAULT);
-    lv_obj_set_style_text_letter_space(ui->screen_setting_label_setting, 0, LV_PART_MAIN|LV_STATE_DEFAULT);
-    lv_obj_set_style_text_line_space(ui->screen_setting_label_setting, 0, LV_PART_MAIN|LV_STATE_DEFAULT);
-    lv_obj_set_style_text_align(ui->screen_setting_label_setting, LV_TEXT_ALIGN_LEFT, LV_PART_MAIN|LV_STATE_DEFAULT);
-    lv_obj_set_style_bg_opa(ui->screen_setting_label_setting, 255, LV_PART_MAIN|LV_STATE_DEFAULT);
-    lv_obj_set_style_bg_color(ui->screen_setting_label_setting, lv_color_hex(0xdbd9d9), LV_PART_MAIN|LV_STATE_DEFAULT);
-    lv_obj_set_style_bg_grad_dir(ui->screen_setting_label_setting, LV_GRAD_DIR_NONE, LV_PART_MAIN|LV_STATE_DEFAULT);
-    lv_obj_set_style_pad_top(ui->screen_setting_label_setting, 5, LV_PART_MAIN|LV_STATE_DEFAULT);
-    lv_obj_set_style_pad_right(ui->screen_setting_label_setting, 0, LV_PART_MAIN|LV_STATE_DEFAULT);
-    lv_obj_set_style_pad_bottom(ui->screen_setting_label_setting, 0, LV_PART_MAIN|LV_STATE_DEFAULT);
-    lv_obj_set_style_pad_left(ui->screen_setting_label_setting, 5, LV_PART_MAIN|LV_STATE_DEFAULT);
-    lv_obj_set_style_shadow_width(ui->screen_setting_label_setting, 0, LV_PART_MAIN|LV_STATE_DEFAULT);
-
     //Write codes screen_setting_cont_light_switch
     ui->screen_setting_cont_light_switch = lv_obj_create(ui->screen_setting);
-    lv_obj_set_pos(ui->screen_setting_cont_light_switch, 10, 240);
+    lv_obj_set_pos(ui->screen_setting_cont_light_switch, 10, 228);
     lv_obj_set_size(ui->screen_setting_cont_light_switch, 220, 60);
     lv_obj_set_scrollbar_mode(ui->screen_setting_cont_light_switch, LV_SCROLLBAR_MODE_OFF);
 
@@ -170,7 +145,7 @@ void setup_scr_screen_setting(lv_ui *ui)
 
     //Write codes screen_setting_cont_volume
     ui->screen_setting_cont_volume = lv_obj_create(ui->screen_setting);
-    lv_obj_set_pos(ui->screen_setting_cont_volume, 10, 50);
+    lv_obj_set_pos(ui->screen_setting_cont_volume, 10, 56);
     lv_obj_set_size(ui->screen_setting_cont_volume, 220, 60);
     lv_obj_set_scrollbar_mode(ui->screen_setting_cont_volume, LV_SCROLLBAR_MODE_OFF);
 
@@ -262,7 +237,7 @@ void setup_scr_screen_setting(lv_ui *ui)
 
     //Write codes screen_setting_label_vol_percent
     ui->screen_setting_label_vol_percent = lv_label_create(ui->screen_setting_cont_volume);
-    lv_obj_set_pos(ui->screen_setting_label_vol_percent, 155, 10);
+    lv_obj_set_pos(ui->screen_setting_label_vol_percent, 154, 10);
     lv_obj_set_size(ui->screen_setting_label_vol_percent, 55, 24);
     lv_label_set_text(ui->screen_setting_label_vol_percent, "");
     lv_label_set_long_mode(ui->screen_setting_label_vol_percent, LV_LABEL_LONG_WRAP);
@@ -285,7 +260,7 @@ void setup_scr_screen_setting(lv_ui *ui)
 
     //Write codes screen_setting_cont_bright
     ui->screen_setting_cont_bright = lv_obj_create(ui->screen_setting);
-    lv_obj_set_pos(ui->screen_setting_cont_bright, 10, 143);
+    lv_obj_set_pos(ui->screen_setting_cont_bright, 10, 139);
     lv_obj_set_size(ui->screen_setting_cont_bright, 220, 60);
     lv_obj_set_scrollbar_mode(ui->screen_setting_cont_bright, LV_SCROLLBAR_MODE_OFF);
 
@@ -377,7 +352,7 @@ void setup_scr_screen_setting(lv_ui *ui)
 
     //Write codes screen_setting_label_bright_percent
     ui->screen_setting_label_bright_percent = lv_label_create(ui->screen_setting_cont_bright);
-    lv_obj_set_pos(ui->screen_setting_label_bright_percent, 155, 10);
+    lv_obj_set_pos(ui->screen_setting_label_bright_percent, 156, 11);
     lv_obj_set_size(ui->screen_setting_label_bright_percent, 55, 24);
     lv_label_set_text(ui->screen_setting_label_bright_percent, "");
     lv_label_set_long_mode(ui->screen_setting_label_bright_percent, LV_LABEL_LONG_WRAP);

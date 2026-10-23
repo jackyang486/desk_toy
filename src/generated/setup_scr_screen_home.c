@@ -30,7 +30,7 @@ void setup_scr_screen_home(lv_ui *ui)
 
     //Write codes screen_home_img_lottie
     ui->screen_home_img_lottie = lv_image_create(ui->screen_home);
-    lv_obj_set_pos(ui->screen_home_img_lottie, 89, 122);
+    lv_obj_set_pos(ui->screen_home_img_lottie, 89, 157);
     lv_obj_set_size(ui->screen_home_img_lottie, 50, 50);
     lv_obj_add_flag(ui->screen_home_img_lottie, LV_OBJ_FLAG_CLICKABLE);
     lv_image_set_src(ui->screen_home_img_lottie, &_photo_img2_RGB565A8_50x50);
@@ -43,7 +43,7 @@ void setup_scr_screen_home(lv_ui *ui)
 
     //Write codes screen_home_img_mouse
     ui->screen_home_img_mouse = lv_image_create(ui->screen_home);
-    lv_obj_set_pos(ui->screen_home_img_mouse, 10, 122);
+    lv_obj_set_pos(ui->screen_home_img_mouse, 10, 157);
     lv_obj_set_size(ui->screen_home_img_mouse, 50, 50);
     lv_obj_add_flag(ui->screen_home_img_mouse, LV_OBJ_FLAG_CLICKABLE);
     lv_image_set_src(ui->screen_home_img_mouse, &_mouse_RGB565A8_50x50);
@@ -56,7 +56,7 @@ void setup_scr_screen_home(lv_ui *ui)
 
     //Write codes screen_home_img_radio
     ui->screen_home_img_radio = lv_image_create(ui->screen_home);
-    lv_obj_set_pos(ui->screen_home_img_radio, 163, 65);
+    lv_obj_set_pos(ui->screen_home_img_radio, 163, 100);
     lv_obj_set_size(ui->screen_home_img_radio, 50, 50);
     lv_obj_add_flag(ui->screen_home_img_radio, LV_OBJ_FLAG_CLICKABLE);
     lv_image_set_src(ui->screen_home_img_radio, &_radio_img2_RGB565A8_50x50);
@@ -69,7 +69,7 @@ void setup_scr_screen_home(lv_ui *ui)
 
     //Write codes screen_home_img_wifi
     ui->screen_home_img_wifi = lv_image_create(ui->screen_home);
-    lv_obj_set_pos(ui->screen_home_img_wifi, 89, 65);
+    lv_obj_set_pos(ui->screen_home_img_wifi, 89, 100);
     lv_obj_set_size(ui->screen_home_img_wifi, 50, 50);
     lv_obj_add_flag(ui->screen_home_img_wifi, LV_OBJ_FLAG_CLICKABLE);
     lv_image_set_src(ui->screen_home_img_wifi, &_wifi_img2_RGB565A8_50x50);
@@ -82,7 +82,7 @@ void setup_scr_screen_home(lv_ui *ui)
 
     //Write codes screen_home_img_setting
     ui->screen_home_img_setting = lv_image_create(ui->screen_home);
-    lv_obj_set_pos(ui->screen_home_img_setting, 10, 65);
+    lv_obj_set_pos(ui->screen_home_img_setting, 10, 100);
     lv_obj_set_size(ui->screen_home_img_setting, 50, 50);
     lv_obj_add_flag(ui->screen_home_img_setting, LV_OBJ_FLAG_CLICKABLE);
     lv_image_set_src(ui->screen_home_img_setting, &_setup_img2_RGB565A8_50x50);
@@ -95,7 +95,7 @@ void setup_scr_screen_home(lv_ui *ui)
 
     //Write codes screen_home_img_chatbot
     ui->screen_home_img_chatbot = lv_image_create(ui->screen_home);
-    lv_obj_set_pos(ui->screen_home_img_chatbot, 163, 10);
+    lv_obj_set_pos(ui->screen_home_img_chatbot, 163, 35);
     lv_obj_set_size(ui->screen_home_img_chatbot, 50, 50);
     lv_obj_add_flag(ui->screen_home_img_chatbot, LV_OBJ_FLAG_CLICKABLE);
     lv_image_set_src(ui->screen_home_img_chatbot, &_robot_img2_RGB565A8_50x50);
@@ -108,7 +108,7 @@ void setup_scr_screen_home(lv_ui *ui)
 
     //Write codes screen_home_img_music
     ui->screen_home_img_music = lv_image_create(ui->screen_home);
-    lv_obj_set_pos(ui->screen_home_img_music, 89, 10);
+    lv_obj_set_pos(ui->screen_home_img_music, 89, 35);
     lv_obj_set_size(ui->screen_home_img_music, 50, 50);
     lv_obj_add_flag(ui->screen_home_img_music, LV_OBJ_FLAG_CLICKABLE);
     lv_image_set_src(ui->screen_home_img_music, &_music_img2_RGB565A8_50x50);
@@ -121,7 +121,7 @@ void setup_scr_screen_home(lv_ui *ui)
 
     //Write codes screen_home_img_album
     ui->screen_home_img_album = lv_image_create(ui->screen_home);
-    lv_obj_set_pos(ui->screen_home_img_album, 10, 10);
+    lv_obj_set_pos(ui->screen_home_img_album, 10, 35);
     lv_obj_set_size(ui->screen_home_img_album, 50, 50);
     lv_obj_add_flag(ui->screen_home_img_album, LV_OBJ_FLAG_CLICKABLE);
     lv_image_set_src(ui->screen_home_img_album, &_photo_img2_RGB565A8_50x50);
@@ -131,6 +131,32 @@ void setup_scr_screen_home(lv_ui *ui)
     //Write style for screen_home_img_album, Part: LV_PART_MAIN, State: LV_STATE_DEFAULT.
     lv_obj_set_style_image_recolor_opa(ui->screen_home_img_album, 0, LV_PART_MAIN|LV_STATE_DEFAULT);
     lv_obj_set_style_image_opa(ui->screen_home_img_album, 255, LV_PART_MAIN|LV_STATE_DEFAULT);
+
+    //Write codes screen_home_img_game
+    ui->screen_home_img_game = lv_image_create(ui->screen_home);
+    lv_obj_set_pos(ui->screen_home_img_game, 163, 157);
+    lv_obj_set_size(ui->screen_home_img_game, 50, 50);
+    lv_obj_add_flag(ui->screen_home_img_game, LV_OBJ_FLAG_CLICKABLE);
+    lv_image_set_src(ui->screen_home_img_game, &_game_RGB565A8_50x50);
+    lv_image_set_pivot(ui->screen_home_img_game, 50,50);
+    lv_image_set_rotation(ui->screen_home_img_game, 0);
+
+    //Write style for screen_home_img_game, Part: LV_PART_MAIN, State: LV_STATE_DEFAULT.
+    lv_obj_set_style_image_recolor_opa(ui->screen_home_img_game, 0, LV_PART_MAIN|LV_STATE_DEFAULT);
+    lv_obj_set_style_image_opa(ui->screen_home_img_game, 255, LV_PART_MAIN|LV_STATE_DEFAULT);
+
+    //Write codes screen_home_img_weather
+    ui->screen_home_img_weather = lv_image_create(ui->screen_home);
+    lv_obj_set_pos(ui->screen_home_img_weather, 10, 214);
+    lv_obj_set_size(ui->screen_home_img_weather, 50, 50);
+    lv_obj_add_flag(ui->screen_home_img_weather, LV_OBJ_FLAG_CLICKABLE);
+    lv_image_set_src(ui->screen_home_img_weather, &_Weather_RGB565A8_50x50);
+    lv_image_set_pivot(ui->screen_home_img_weather, 50,50);
+    lv_image_set_rotation(ui->screen_home_img_weather, 0);
+
+    //Write style for screen_home_img_weather, Part: LV_PART_MAIN, State: LV_STATE_DEFAULT.
+    lv_obj_set_style_image_recolor_opa(ui->screen_home_img_weather, 0, LV_PART_MAIN|LV_STATE_DEFAULT);
+    lv_obj_set_style_image_opa(ui->screen_home_img_weather, 255, LV_PART_MAIN|LV_STATE_DEFAULT);
 
     //The custom code of screen_home.
 

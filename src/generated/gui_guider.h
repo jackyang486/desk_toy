@@ -41,7 +41,6 @@ typedef struct
 	lv_obj_t *screen_weather_img_hour_1;
 	lv_obj_t *screen_weather_img_hour_ge;
 	lv_obj_t *screen_weather_img_weather0;
-	lv_obj_t *screen_weather_no_wifi_icon;
 	lv_obj_t *screen_weather_label_qulaity;
 	lv_obj_t *screen_weather_label_year_month;
 	lv_obj_t *screen_weather_label_week;
@@ -53,10 +52,10 @@ typedef struct
 	lv_obj_t *screen_weather_label_temp;
 	lv_obj_t *screen_weather_label_weather_banner;
 	lv_obj_t *screen_weather_label_city;
-	lv_obj_t *screen_weather_ip_address;
 	lv_obj_t *screen_weather_wifi_icon;
 	lv_obj_t *screen_photo;
 	bool screen_photo_del;
+	lv_obj_t *screen_photo_view;
 	lv_obj_t *screen_photo_right_arrow;
 	lv_obj_t *screen_photo_right_arrow_label;
 	lv_obj_t *screen_photo_btn_delete;
@@ -67,11 +66,10 @@ typedef struct
 	lv_obj_t *screen_photo_btn_loop_label;
 	lv_obj_t *screen_photo_btn_web;
 	lv_obj_t *screen_photo_btn_web_label;
-	lv_obj_t *screen_photo_view;
 	lv_obj_t *screen_wifi;
 	bool screen_wifi_del;
-	lv_obj_t *screen_wifi_list_title;
 	lv_obj_t *screen_wifi_list;
+	lv_obj_t *screen_wifi_list_item0;
 	lv_obj_t *screen_wifi_form;
 	lv_obj_t *screen_wifi_wifi_name_label;
 	lv_obj_t *screen_wifi_wifi_pass_label;
@@ -84,7 +82,6 @@ typedef struct
 	lv_obj_t *screen_music;
 	bool screen_music_del;
 	lv_obj_t *screen_music_player_list;
-	lv_obj_t *screen_music_label_list_name;
 	lv_obj_t *screen_music_list_music;
 	lv_obj_t *screen_music_player;
 	lv_obj_t *screen_music_rnd_img;
@@ -111,7 +108,6 @@ typedef struct
 	lv_obj_t *screen_robot_cont_msg;
 	lv_obj_t *screen_setting;
 	bool screen_setting_del;
-	lv_obj_t *screen_setting_label_setting;
 	lv_obj_t *screen_setting_cont_light_switch;
 	lv_obj_t *screen_setting_label_light_switch_title;
 	lv_obj_t *screen_setting_slider_switch;
@@ -129,14 +125,13 @@ typedef struct
 	lv_obj_t *screen_setting_label_bright_percent;
 	lv_obj_t *screen_radio;
 	bool screen_radio_del;
-	lv_obj_t *screen_radio_label_1;
 	lv_obj_t *screen_radio_list_radio;
 	lv_obj_t *screen_mouse;
+	bool screen_mouse_del;
 	lv_obj_t *screen_mouse_btn_right;
 	lv_obj_t *screen_mouse_btn_right_label;
 	lv_obj_t *screen_mouse_btn_left;
 	lv_obj_t *screen_mouse_btn_left_label;
-	bool screen_mouse_del;
 	lv_obj_t *screen_anim;
 	bool screen_anim_del;
 	lv_obj_t *screen_anim_rlottie_1;
@@ -150,6 +145,8 @@ typedef struct
 	lv_obj_t *screen_home_img_chatbot;
 	lv_obj_t *screen_home_img_music;
 	lv_obj_t *screen_home_img_album;
+	lv_obj_t *screen_home_img_game;
+	lv_obj_t *screen_home_img_weather;
 	lv_obj_t *g_kb_top_layer;
 }lv_ui;
 
@@ -245,6 +242,8 @@ LV_IMAGE_DECLARE(_wave_top_RGB565A8_240x34);
 LV_IMAGE_DECLARE(_wave_bottom_RGB565A8_240x34);
 LV_IMAGE_DECLARE(_btn_loop_RGB565A8_25x25);
 LV_IMAGE_DECLARE(_btn_play_RGB565A8_40x40);
+LV_IMAGE_DECLARE(Music);
+LV_IMAGE_DECLARE(_game_RGB565A8_50x50);
 
 LV_IMG_DECLARE(t0);
 LV_IMG_DECLARE(t1);
@@ -281,6 +280,7 @@ LV_IMAGE_DECLARE(_wifi_img2_RGB565A8_50x50);
 LV_IMAGE_DECLARE(_setup_img2_RGB565A8_50x50);
 LV_IMAGE_DECLARE(_robot_img2_RGB565A8_50x50);
 LV_IMAGE_DECLARE(_music_img2_RGB565A8_50x50);
+LV_IMAGE_DECLARE(_Weather_RGB565A8_50x50);
 
 LV_FONT_DECLARE(lv_font_montserratMedium_16)
 LV_FONT_DECLARE(lv_font_SourceHanSerifSC_Regular_20)

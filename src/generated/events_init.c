@@ -21,14 +21,29 @@ static void screen_weather_event_handler (lv_event_t *e)
 {
     lv_event_code_t code = lv_event_get_code(e);
     switch (code) {
-    case LV_EVENT_CLICKED:
-    {
-        ui_load_scr_animation(&guider_ui, &guider_ui.screen_home, guider_ui.screen_home_del, &guider_ui.screen_weather_del, setup_scr_screen_home, LV_SCR_LOAD_ANIM_FADE_ON, 100, 200, true, false);
-        break;
-    }
     case LV_EVENT_SCREEN_LOADED:
     {
         screen_load_execute(lv_screen_active(),LOADED);
+        break;
+    }
+    case LV_EVENT_SCREEN_UNLOAD_START:
+    {
+        screen_load_execute(lv_screen_active(),UNLOAD);
+        break;
+    }
+    case LV_EVENT_GESTURE:
+    {
+        lv_dir_t dir = lv_indev_get_gesture_dir(lv_indev_active());
+        switch(dir) {
+        case LV_DIR_RIGHT:
+        {
+            lv_indev_wait_release(lv_indev_active());
+            ui_load_scr_animation(&guider_ui, &guider_ui.screen_home, guider_ui.screen_home_del, &guider_ui.screen_weather_del, setup_scr_screen_home, LV_SCR_LOAD_ANIM_OVER_RIGHT, 100, 200, true, false);
+            break;
+        }
+        default:
+            break;
+        }
         break;
     }
     default:
@@ -309,6 +324,7 @@ static void screen_robot_event_handler (lv_event_t *e)
     switch (code) {
     case LV_EVENT_SCREEN_LOADED:
     {
+
         screen_load_execute(lv_screen_active(),LOADED);
         break;
     }
@@ -502,19 +518,9 @@ static void screen_home_event_handler (lv_event_t *e)
 {
     lv_event_code_t code = lv_event_get_code(e);
     switch (code) {
-    case LV_EVENT_GESTURE:
+    case LV_EVENT_SCREEN_LOADED:
     {
-        lv_dir_t dir = lv_indev_get_gesture_dir(lv_indev_active());
-        switch(dir) {
-        case LV_DIR_RIGHT:
-        {
-            lv_indev_wait_release(lv_indev_active());
-            ui_load_scr_animation(&guider_ui, &guider_ui.screen_weather, guider_ui.screen_weather_del, &guider_ui.screen_home_del, setup_scr_screen_weather, LV_SCR_LOAD_ANIM_OVER_RIGHT, 100, 200, true, false);
-            break;
-        }
-        default:
-            break;
-        }
+        screen_load_execute(lv_screen_active(),LOADED);
         break;
     }
     default:
@@ -634,6 +640,20 @@ static void screen_home_img_album_event_handler (lv_event_t *e)
     }
 }
 
+static void screen_home_img_weather_event_handler (lv_event_t *e)
+{
+    lv_event_code_t code = lv_event_get_code(e);
+    switch (code) {
+    case LV_EVENT_CLICKED:
+    {
+        ui_load_scr_animation(&guider_ui, &guider_ui.screen_weather, guider_ui.screen_weather_del, &guider_ui.screen_home_del, setup_scr_screen_weather, LV_SCR_LOAD_ANIM_OVER_LEFT, 200, 200, true, false);
+        break;
+    }
+    default:
+        break;
+    }
+}
+
 void events_init_screen_home (lv_ui *ui)
 {
     lv_obj_add_event_cb(ui->screen_home, screen_home_event_handler, LV_EVENT_ALL, ui);
@@ -645,6 +665,7 @@ void events_init_screen_home (lv_ui *ui)
     lv_obj_add_event_cb(ui->screen_home_img_chatbot, screen_home_img_chatbot_event_handler, LV_EVENT_ALL, ui);
     lv_obj_add_event_cb(ui->screen_home_img_music, screen_home_img_music_event_handler, LV_EVENT_ALL, ui);
     lv_obj_add_event_cb(ui->screen_home_img_album, screen_home_img_album_event_handler, LV_EVENT_ALL, ui);
+    lv_obj_add_event_cb(ui->screen_home_img_weather, screen_home_img_weather_event_handler, LV_EVENT_ALL, ui);
 }
 
 
