@@ -21,7 +21,6 @@ typedef enum{
 WeatherPrintf weatherPrintf;
 WiFiClient wificlient;
 WiFiUDP Udp;
-volatile bool time_enable = false;
 time_t getNtpTime(void);
 void sendNTPpacket(IPAddress &address);
 void getLocalCityWeather(void);
@@ -34,11 +33,7 @@ void wifi_udp_init(){
   Serial.println("等待同步...");
   setSyncProvider(getNtpTime);
   setSyncInterval(300);
-  //字体初始化
-  lv_obj_set_style_text_font(guider_ui.screen_weather_label_weather_banner, &font_puhui_16_4,  LV_PART_MAIN|LV_STATE_DEFAULT);
-  lv_obj_set_style_text_font(guider_ui.screen_weather_label_city, &font_puhui_16_4, LV_PART_MAIN|LV_STATE_DEFAULT);
-  lv_obj_set_style_text_font(guider_ui.screen_weather_label_qulaity, &font_puhui_16_4, LV_PART_MAIN|LV_STATE_DEFAULT);
-  vTaskDelay(pdMS_TO_TICKS(500));    
+ 
 }
 /*-------- NTP code ----------*/
 
@@ -138,25 +133,12 @@ void slide_switch(lv_obj_t *frontImg,lv_obj_t *backImg,TIME_TYPE time_type,int n
 void data_fresh_task(void *pvParam){
   vTaskDelay(pdMS_TO_TICKS(500));
   auto& wifiConfig = wifi_config::GetInstance(); 
-  while(time_enable && WiFi.status() == WL_CONNECTED){  
+  while(WiFi.status() == WL_CONNECTED){  
     getCityWeater("101250101");
     vTaskDelay(pdMS_TO_TICKS(300000));
   }
   // 退出任务
   vTaskDelete(NULL);
-}
-
-//天气每5分钟刷新任务
-void weather_page_load(bool pageLoad){
-  if(pageLoad){
-      time_enable = true;
-      xTaskCreate(data_fresh_task, "data_fresh_task", 4096,NULL, 1, NULL);
-  }else{
-      time_enable= false;
-      Udp.flush();
-      Udp.clear();
-      Udp.stop();
-  }
 }
 
 // 获取城市天气
@@ -219,7 +201,7 @@ String YearMonthDay()
 }
 
 
-int Hour_sign   = 60;
+int Hour_sign   = 24;
 int Minute_sign = 60;
 int Second_sign = 60;
 void digitalClockDisplay(time_t nowTime)
@@ -320,5 +302,21 @@ void weaterData(String *cityDZ,String *dataSK,String *dataFC)
   lv_label_set_long_mode(guider_ui.screen_weather_label_weather_banner, LV_LABEL_LONG_SCROLL);
   
   lv_obj_invalidate(guider_ui.screen_weather);
+}
+
+void weather_screen_load(SCREEN_LOAD_STAUS status){
+    if(status == LOADED){ 
+       //字体初始化
+      lv_obj_set_style_text_font(guider_ui.screen_weather_label_weather_banner, &font_puhui_16_4,  LV_PART_MAIN|LV_STATE_DEFAULT);
+      lv_obj_set_style_text_font(guider_ui.screen_weather_label_city, &font_puhui_16_4, LV_PART_MAIN|LV_STATE_DEFAULT);
+      lv_obj_set_style_text_font(guider_ui.screen_weather_label_qulaity, &font_puhui_16_4, LV_PART_MAIN|LV_STATE_DEFAULT);
+      vTaskDelay(pdMS_TO_TICKS(500));    
+      xTaskCreate(data_fresh_task, "data_fresh_task", 4096,NULL, 1, NULL);
+    }else{
+      Udp.flush();
+      Udp.clear();
+      Udp.stop();
+    }
+
 }
 

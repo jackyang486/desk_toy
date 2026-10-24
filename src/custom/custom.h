@@ -46,6 +46,7 @@ typedef struct {
     lv_obj_t  *pageHeadCont;
 }Page_Head;
 
+extern Page_Head  page_head;
 
 void screen_load_register(screen_load *screen_load);
 void screen_load_execute(lv_obj_t *obj,SCREEN_LOAD_STAUS loadStatus);

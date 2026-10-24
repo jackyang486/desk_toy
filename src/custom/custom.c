@@ -17,7 +17,7 @@
 
 static screen_load *screen_load_method=NULL;
 static screen_load lv_screen_param;
-static Page_Head  page_head;
+Page_Head  page_head;
 // ================= 关键：模拟器兼容 =================
 #if defined(_WIN32) || defined(__SIMULATOR__)
 // 电脑模拟器运行时，给一个空实现，不报错

@@ -127,46 +127,31 @@ void wifi_config::main_sreen_loaded_task(){
      auto *p = static_cast<wifi_config*>(arg);
     if(WiFi.status() == WL_CONNECTED){ //如果是已经连接上了，则显示IP
          String ipAddrss =  WiFi.localIP().toString();
-         lv_label_set_text(guider_ui.screen_weather_ip_address, ipAddrss.c_str());
-         lv_obj_clear_flag(guider_ui.screen_weather_wifi_icon, LV_OBJ_FLAG_HIDDEN);
-         lv_obj_add_flag(guider_ui.screen_weather_no_wifi_icon, LV_OBJ_FLAG_HIDDEN);
+          lv_image_set_src(page_head.wifi_img,&_wifiEnbale_RGB565A8_20x20);
           wifi_udp_init();
-          weather_page_load(true);
      }else{
-         lv_obj_set_style_text_font(guider_ui.screen_weather_ip_address, &font_puhui_16_4, LV_PART_MAIN|LV_STATE_DEFAULT);
          auto& setting = Setting::GetInstance();
          std::pair<String, String>  params =  setting.getWifiConfig();
          if(!params.first.isEmpty() && !params.second.isEmpty()){
-            lv_label_set_text(guider_ui.screen_weather_ip_address,"WIFI连接中...");
             p->wifi_connect(params.first.c_str(), params.second.c_str());
             if (WiFi.status() == WL_CONNECTED) {
               String ipAddrss =  WiFi.localIP().toString();
-              lv_label_set_text(guider_ui.screen_weather_ip_address, ipAddrss.c_str());
-              lv_obj_clear_flag(guider_ui.screen_weather_wifi_icon, LV_OBJ_FLAG_HIDDEN);
-              lv_obj_add_flag(guider_ui.screen_weather_no_wifi_icon, LV_OBJ_FLAG_HIDDEN);
+              lv_image_set_src(page_head.wifi_img,&_wifiEnbale_RGB565A8_20x20);
               vTaskDelay(pdMS_TO_TICKS(200));
               wifi_udp_init();
-              weather_page_load(true);
             } else {
-              lv_label_set_text(guider_ui.screen_weather_ip_address,"WIFI连接失败");
+               lv_image_set_src(page_head.wifi_img,&_NOWIFI_RGB565A8_20x20);
+               lv_label_set_text(page_head.time_label,"WIFI连接失败");
             }
         }else{
-             lv_label_set_text(guider_ui.screen_weather_ip_address,"请配置WIFI");
+            
         }
      }
      // 退出任务
     vTaskDelete(NULL);
    }, "main_sreen_loaded_task", 4096*4,this, 2, NULL);
 }
-//=========== 主屏加载完成时间 ==========
-void main_sreen_loaded(SCREEN_LOAD_STAUS loadStatus){
-   if(loadStatus == LOADED){
-    auto& wifiConfig = wifi_config::GetInstance(); 
-    wifiConfig.main_sreen_loaded_task(); 
-   }else{
-    weather_page_load(false);
-   }
-}
+
 // =========== 扫描WiFi事件 ==========
 void wifi_screen_load(SCREEN_LOAD_STAUS status) {
    // 2. 启动WiFi任务（关键！不卡UI）

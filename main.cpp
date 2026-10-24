@@ -19,6 +19,7 @@
 #include "setting.h"
 #include "radio.h"
 #include "lottie.h"
+#include <TimeLib.h>
 //#include "fly_mouse.h"
 #include <vector>
 
@@ -152,6 +153,7 @@ void lvgl_user_init(void)
     lv_screen_param.setting_screen_load = setting_win_load;
     lv_screen_param.radio_screen_load = radio_win_load;
     lv_screen_param.lottie_screen_load = lottie_page_load;
+    lv_screen_param.weather_screen_load = weather_screen_load;
     screen_load_register(&lv_screen_param);
 
     setup_ui(&guider_ui);
@@ -166,6 +168,16 @@ void lvgl_user_init(void)
 }
 
 static void ui_task(void *parameter);
+
+//=========== 主屏加载完成时间 ==========
+void main_sreen_loaded(SCREEN_LOAD_STAUS loadStatus){
+   if(loadStatus == LOADED){
+    auto& wifiConfig = wifi_config::GetInstance(); 
+    wifiConfig.main_sreen_loaded_task(); 
+   }else{
+    
+   }
+}
 
 void setup() {
   Serial.begin(115200);
@@ -192,26 +204,36 @@ void setup() {
   printf("Free INTERNAL heap: %lu\n", heap_caps_get_free_size(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT));
   printf("Largest INTERNAL free block: %lu\n", heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT));
 }
-time_t prevDisplay = 0; // 显示时间
+
 static void ui_task(void *parameter) {
     (void)parameter;
     uint32_t last_resource_log = 0;
     while(1) {
         lv_timer_handler();
-        delay(5);
-        if (time_enable && now() != prevDisplay) {
-            prevDisplay = now();
-            digitalClockDisplay(prevDisplay);
-        }
-        const uint32_t timeout = Setting::GetInstance().GetScreenTimeout();
-        if (screen_on && timeout > 0 && (millis() - last_touch_time > timeout)) {
-            my_lcd.writecommand(TFT_DISPOFF);
-            ledcWrite(TFT_BL_PIN, 0);
-            screen_on = false;
-        }
+        delay(5);      
     }
 }
 
+int Hour_sign   = 24;
+int Minute_sign = 60;
+time_t prevDisplay = 0; // 显示时间
 void loop() {
-    delay(1);
+    if (now() != prevDisplay) {
+        prevDisplay = now();
+        if(minute(prevDisplay)!=Minute_sign || hour(prevDisplay)!=Hour_sign)//分钟刷新
+        {
+            char time_buff[128];
+            sprintf(time_buff, "%02d%02d:%02d%02d", 
+            hour(prevDisplay)/10, hour(prevDisplay)%10,minute(prevDisplay)/10,minute(prevDisplay)%10);
+            lv_label_set_text(page_head.time_label,time_buff);
+            Hour_sign = hour(prevDisplay);
+            Minute_sign = minute(prevDisplay);
+        }
+    }
+    const uint32_t timeout = Setting::GetInstance().GetScreenTimeout();
+    if (screen_on && timeout > 0 && (millis() - last_touch_time > timeout)) {
+            my_lcd.writecommand(TFT_DISPOFF);
+            ledcWrite(TFT_BL_PIN, 0);
+            screen_on = false;
+    }
 }
