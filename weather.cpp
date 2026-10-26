@@ -3,7 +3,6 @@
 #include "ArduinoJson.h"
 #include <TimeLib.h>
 #include <atomic>
-#include "src/custom/custom.h"
 #include <WiFi.h>
 #include <WiFiUdp.h>
 #include "weather_printf.h"
@@ -211,12 +210,18 @@ void digitalClockDisplay(time_t nowTime)
     slide_switch(guider_ui.screen_weather_img_hour_2,guider_ui.screen_weather_img_hour_shi,HOUR_TYPE,hour(nowTime)/10);
     slide_switch(guider_ui.screen_weather_img_hour_1,guider_ui.screen_weather_img_hour_ge,HOUR_TYPE,hour(nowTime)%10);
     Hour_sign = hour(nowTime);
+    lv_label_set_text(guider_ui.screen_weather_label_year_month,YearMonthDay().c_str());
+    lv_label_set_text(guider_ui.screen_weather_label_week,week().c_str());
   }
   if(minute(nowTime)!=Minute_sign)//分钟刷新
   {
     slide_switch(guider_ui.screen_weather_img_minute_2,guider_ui.screen_weather_img_minute_shi,MINUTE_TYPE,minute(nowTime)/10);
     slide_switch(guider_ui.screen_weather_img_minute_1,guider_ui.screen_weather_img_minute_ge,MINUTE_TYPE,minute(nowTime)%10);
     Minute_sign = minute(nowTime);
+    char time_buff[128];
+    sprintf(time_buff, "%d%d:%d%d", 
+    hour(nowTime)/10, hour(nowTime)%10,minute(nowTime)/10,minute(nowTime)%10);
+    lv_label_set_text(page_head.time_label,time_buff);
   }
   if(second(nowTime)!=Second_sign)//分钟刷新
   {
@@ -224,8 +229,7 @@ void digitalClockDisplay(time_t nowTime)
     slide_switch(guider_ui.screen_weather_img_second_1,guider_ui.screen_weather_img_second_ge,SECOND_TYPE,second(nowTime)%10);
     Second_sign = second(nowTime);
   }
-  lv_label_set_text(guider_ui.screen_weather_label_year_month,YearMonthDay().c_str());
-  lv_label_set_text(guider_ui.screen_weather_label_week,week().c_str());
+ 
 }
 
 

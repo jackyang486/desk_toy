@@ -22,10 +22,9 @@ wifi_config& wifi_config::GetInstance() {
 }
 
 void wifi_config::initial(){
-    scan_finished = false; //开机未扫描状态
     //注册回调事件
     board.onWifiListScaned([this](const std::vector<WifiInfo>& wifi_list){
-      scan_finished = true;
+      lv_obj_clean(guider_ui.screen_wifi_list);
       for(int i=0; i<wifi_list.size();i++){
           String ssid = wifi_list[i].ssid;
           int8_t rssi = wifi_list[i].rssi;
@@ -33,6 +32,7 @@ void wifi_config::initial(){
           snprintf(buf, sizeof(buf), "%s(%d)", ssid.c_str(),rssi);
           lv_obj_t *btn = lv_list_add_btn(guider_ui.screen_wifi_list, LV_SYMBOL_WIFI, buf);
           lv_obj_t *btnText = lv_obj_get_child(btn, 1); 
+          lv_obj_set_style_text_font(btnText, &font_puhui_16_4, LV_PART_MAIN | LV_STATE_DEFAULT);
           char *ssid_copy = strdup(ssid.c_str());
           lv_obj_add_event_cb(btn, wifi_config::wifi_list_click_event, LV_EVENT_CLICKED, (void *)ssid_copy);
           if (WiFi.status() == WL_CONNECTED) {
@@ -46,7 +46,6 @@ void wifi_config::initial(){
 // WiFi 扫描任务
 void wifi_config::wifi_scan_start()
 {
-  if(!scan_finished){   //如果未扫描，则进行扫描
    vTaskDelay(pdMS_TO_TICKS(200));
    static lv_style_t style_wifi_btn_text;
    lv_style_init(&style_wifi_btn_text);
@@ -57,7 +56,6 @@ void wifi_config::wifi_scan_start()
        board.GetWifiList();
        vTaskDelete(NULL);
     }, "wifi_scan_task",4096, NULL, 3,NULL);
-  }
 }
 
 // WiFi 连接任务
@@ -149,15 +147,17 @@ void wifi_config::main_sreen_loaded_task(){
      }
      // 退出任务
     vTaskDelete(NULL);
-   }, "main_sreen_loaded_task", 4096*4,this, 2, NULL);
+   }, "main_sreen_loaded_task", 4096*4,this, 2, NULL); 
 }
 
 // =========== 扫描WiFi事件 ==========
 void wifi_screen_load(SCREEN_LOAD_STAUS status) {
    // 2. 启动WiFi任务（关键！不卡UI）
+  auto& wifiConfig = wifi_config::GetInstance(); 
   if(status == LOADED){
-    auto& wifiConfig = wifi_config::GetInstance(); 
     wifiConfig.wifi_scan_start(); //开始扫描
+  }else{
+    lv_obj_clean(guider_ui.screen_wifi_list);
   }
 }
 // =========== wifi连接事件 ============

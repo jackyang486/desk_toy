@@ -88,7 +88,6 @@ void Radio::PlayStation(size_t index) {
     } 
     StopPlay();
     current_index_ = index;
-    lv_label_set_text(guider_ui.screen_radio_label_1, radio_infos[index].name);
     if (audio) audio->connecttohost(radio_infos[index].url);
     
 }
@@ -97,8 +96,6 @@ void Radio::PlayStation(size_t index) {
  void Radio::radio_screen_load(SCREEN_LOAD_STAUS status){
     if (status == LOADED) {
         playing_ = true; 
-        lv_label_set_text(guider_ui.screen_radio_label_1,"list");
-        lv_obj_set_style_text_font(guider_ui.screen_radio_label_1, &font_puhui_16_4, LV_PART_MAIN|LV_STATE_DEFAULT);
         FillListUI();
         if (auto dev = board.getAudioDeviceEs8311()) {
                 dev->disable_i2s();

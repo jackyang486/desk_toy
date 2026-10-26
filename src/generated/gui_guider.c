@@ -94,8 +94,8 @@ void setup_ui(lv_ui *ui)
     setup_bottom_layer();
     init_scr_del_flag(ui);
     init_keyboard(ui);
-    setup_scr_screen_weather(ui);
-    lv_screen_load(ui->screen_weather);
+    setup_scr_screen_home(ui);
+    lv_screen_load(ui->screen_home);
 }
 
 void video_play(lv_ui *ui)

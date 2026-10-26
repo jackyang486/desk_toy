@@ -19,7 +19,7 @@ extern "C" {
 typedef struct
 {
   
-	lv_obj_t *screen_weather;
+lv_obj_t *screen_weather;
 	bool screen_weather_del;
 	lv_obj_t *screen_weather_animimg_astronaut;
 	lv_obj_t *screen_weather_cont_second_2;
@@ -69,7 +69,6 @@ typedef struct
 	lv_obj_t *screen_wifi;
 	bool screen_wifi_del;
 	lv_obj_t *screen_wifi_list;
-	lv_obj_t *screen_wifi_list_item0;
 	lv_obj_t *screen_wifi_form;
 	lv_obj_t *screen_wifi_wifi_name_label;
 	lv_obj_t *screen_wifi_wifi_pass_label;
@@ -83,6 +82,8 @@ typedef struct
 	bool screen_music_del;
 	lv_obj_t *screen_music_player_list;
 	lv_obj_t *screen_music_list_music;
+	lv_obj_t *screen_music_btn_music;
+	lv_obj_t *screen_music_btn_music_label;
 	lv_obj_t *screen_music_player;
 	lv_obj_t *screen_music_rnd_img;
 	lv_obj_t *screen_music_next_img;
@@ -243,7 +244,6 @@ LV_IMAGE_DECLARE(_wave_bottom_RGB565A8_240x34);
 LV_IMAGE_DECLARE(_btn_loop_RGB565A8_25x25);
 LV_IMAGE_DECLARE(_btn_play_RGB565A8_40x40);
 LV_IMAGE_DECLARE(Music);
-LV_IMAGE_DECLARE(_game_RGB565A8_50x50);
 
 LV_IMG_DECLARE(t0);
 LV_IMG_DECLARE(t1);
@@ -270,9 +270,6 @@ LV_IMG_DECLARE(t53);
 LV_IMG_DECLARE(t99);
 
 LV_IMAGE_DECLARE(_confident_240x320_RGB565A8_240x320);
-#define LV_LOT_DECLARE(array_name) extern const uint8_t array_name[];
-LV_LOT_DECLARE(lottie_CuteJumping);
-LV_LOT_DECLARE(lottie_happy);
 LV_IMAGE_DECLARE(_photo_img2_RGB565A8_50x50);
 LV_IMAGE_DECLARE(_mouse_RGB565A8_50x50);
 LV_IMAGE_DECLARE(_radio_img2_RGB565A8_50x50);
@@ -281,12 +278,15 @@ LV_IMAGE_DECLARE(_setup_img2_RGB565A8_50x50);
 LV_IMAGE_DECLARE(_robot_img2_RGB565A8_50x50);
 LV_IMAGE_DECLARE(_music_img2_RGB565A8_50x50);
 LV_IMAGE_DECLARE(_Weather_RGB565A8_50x50);
+LV_IMAGE_DECLARE(_game_RGB565A8_50x50);
+
 
 LV_FONT_DECLARE(lv_font_montserratMedium_16)
 LV_FONT_DECLARE(lv_font_SourceHanSerifSC_Regular_20)
 LV_FONT_DECLARE(lv_font_montserratMedium_18)
 LV_FONT_DECLARE(lv_font_montserratMedium_12)
 LV_FONT_DECLARE(lv_font_SourceHanSerifSC_Regular_16)
+LV_FONT_DECLARE(lv_font_montserratMedium_17)
 LV_FONT_DECLARE(lv_font_montserratMedium_8)
 LV_FONT_DECLARE(lv_font_montserratMedium_20)
 

@@ -15,7 +15,6 @@
 #include "../custom/custom.h"
 
 
-
 void setup_scr_screen_robot(lv_ui *ui)
 {
     //Write codes screen_robot

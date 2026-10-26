@@ -20,7 +20,6 @@
 #include "radio.h"
 #include "lottie.h"
 #include <TimeLib.h>
-//#include "fly_mouse.h"
 #include <vector>
 
 #define LV_LVGL_H_INCLUDE_SIMPLE
@@ -214,20 +213,22 @@ static void ui_task(void *parameter) {
     }
 }
 
-int Hour_sign   = 24;
-int Minute_sign = 60;
 time_t prevDisplay = 0; // 显示时间
 void loop() {
     if (now() != prevDisplay) {
         prevDisplay = now();
-        if(minute(prevDisplay)!=Minute_sign || hour(prevDisplay)!=Hour_sign)//分钟刷新
-        {
-            char time_buff[128];
-            sprintf(time_buff, "%02d%02d:%02d%02d", 
-            hour(prevDisplay)/10, hour(prevDisplay)%10,minute(prevDisplay)/10,minute(prevDisplay)%10);
-            lv_label_set_text(page_head.time_label,time_buff);
-            Hour_sign = hour(prevDisplay);
-            Minute_sign = minute(prevDisplay);
+        if(lv_screen_active() == guider_ui.screen_weather){
+            digitalClockDisplay(prevDisplay);
+        }else{
+          if(minute(prevDisplay)!=Minute_sign || hour(prevDisplay)!=Hour_sign)//分钟刷新
+            {
+                char time_buff[128];
+                sprintf(time_buff, "%d%d:%d%d", 
+                hour(prevDisplay)/10, hour(prevDisplay)%10,minute(prevDisplay)/10,minute(prevDisplay)%10);
+                lv_label_set_text(page_head.time_label,time_buff);
+                Hour_sign = hour(prevDisplay);
+                Minute_sign = minute(prevDisplay);
+            }
         }
     }
     const uint32_t timeout = Setting::GetInstance().GetScreenTimeout();

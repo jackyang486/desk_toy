@@ -31,7 +31,6 @@ void setup_scr_screen_wifi(lv_ui *ui)
     lv_obj_set_pos(ui->screen_wifi_list, 0, 35);
     lv_obj_set_size(ui->screen_wifi_list, 240, 285);
     lv_obj_set_scrollbar_mode(ui->screen_wifi_list, LV_SCROLLBAR_MODE_OFF);
-    ui->screen_wifi_list_item0 = lv_list_add_button(ui->screen_wifi_list, LV_SYMBOL_SAVE, "save");
 
     //Write style state: LV_STATE_DEFAULT for &style_screen_wifi_list_main_main_default
     static lv_style_t style_screen_wifi_list_main_main_default;
@@ -75,7 +74,6 @@ void setup_scr_screen_wifi(lv_ui *ui)
     lv_style_set_bg_opa(&style_screen_wifi_list_extra_btns_main_default, 255);
     lv_style_set_bg_color(&style_screen_wifi_list_extra_btns_main_default, lv_color_hex(0xffffff));
     lv_style_set_bg_grad_dir(&style_screen_wifi_list_extra_btns_main_default, LV_GRAD_DIR_NONE);
-    lv_obj_add_style(ui->screen_wifi_list_item0, &style_screen_wifi_list_extra_btns_main_default, LV_PART_MAIN|LV_STATE_DEFAULT);
 
     //Write style state: LV_STATE_DEFAULT for &style_screen_wifi_list_extra_texts_main_default
     static lv_style_t style_screen_wifi_list_extra_texts_main_default;

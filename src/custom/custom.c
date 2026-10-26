@@ -147,7 +147,7 @@ void create_head(){
     //Write style for screen_home_ page_head.time_label, Part: LV_PART_MAIN, State: LV_STATE_DEFAULT.
     lv_obj_set_style_radius( page_head.time_label, 0, LV_PART_MAIN|LV_STATE_DEFAULT);
     lv_obj_set_style_text_color( page_head.time_label, lv_color_hex(0x12548b), LV_PART_MAIN|LV_STATE_DEFAULT);
-    lv_obj_set_style_text_font( page_head.time_label, &lv_font_montserratMedium_16, LV_PART_MAIN|LV_STATE_DEFAULT);
+    lv_obj_set_style_text_font(page_head.time_label, &font_puhui_16_4, LV_PART_MAIN|LV_STATE_DEFAULT);
     lv_obj_set_style_text_opa( page_head.time_label, 255, LV_PART_MAIN|LV_STATE_DEFAULT);
     lv_obj_set_style_text_letter_space( page_head.time_label, 0, LV_PART_MAIN|LV_STATE_DEFAULT);
     lv_obj_set_style_text_align( page_head.time_label, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN|LV_STATE_DEFAULT);

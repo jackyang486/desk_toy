@@ -198,6 +198,23 @@ static void screen_music_event_handler (lv_event_t *e)
     }
 }
 
+static void screen_music_btn_music_event_handler (lv_event_t *e)
+{
+    lv_event_code_t code = lv_event_get_code(e);
+    switch (code) {
+    case LV_EVENT_CLICKED:
+    {
+        ui_animation(guider_ui.screen_music_player_list, 800, 0, lv_obj_get_x(guider_ui.screen_music_player_list), 240, &lv_anim_path_linear, 0, 0, 0, 0, (lv_anim_exec_xcb_t)lv_obj_set_x, NULL, NULL, NULL);
+        ui_animation(guider_ui.screen_music_player, 800, 0, lv_obj_get_x(guider_ui.screen_music_player), 0, &lv_anim_path_linear, 0, 0, 0, 0, (lv_anim_exec_xcb_t)lv_obj_set_x, NULL, NULL, NULL);
+        lv_obj_add_flag(guider_ui.screen_music_btn_music, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_remove_flag(guider_ui.screen_music_btn_list, LV_OBJ_FLAG_HIDDEN);
+        break;
+    }
+    default:
+        break;
+    }
+}
+
 static void screen_music_rnd_img_event_handler (lv_event_t *e)
 {
     lv_event_code_t code = lv_event_get_code(e);
@@ -246,9 +263,9 @@ static void screen_music_pause_img_event_handler (lv_event_t *e)
     switch (code) {
     case LV_EVENT_CLICKED:
     {
-        lv_obj_add_flag(guider_ui.screen_music_pause_img,LV_OBJ_FLAG_HIDDEN);
-        lv_obj_clear_flag(guider_ui.screen_music_playing_img,LV_OBJ_FLAG_HIDDEN);
         music_play();
+        lv_obj_remove_flag(guider_ui.screen_music_playing_img, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_add_flag(guider_ui.screen_music_pause_img, LV_OBJ_FLAG_HIDDEN);
         break;
     }
     default:
@@ -276,9 +293,9 @@ static void screen_music_playing_img_event_handler (lv_event_t *e)
     switch (code) {
     case LV_EVENT_CLICKED:
     {
-        lv_obj_add_flag(guider_ui.screen_music_playing_img, LV_OBJ_FLAG_HIDDEN);
-        lv_obj_clear_flag(guider_ui.screen_music_pause_img, LV_OBJ_FLAG_HIDDEN);
         music_play();
+        lv_obj_remove_flag(guider_ui.screen_music_pause_img, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_add_flag(guider_ui.screen_music_playing_img, LV_OBJ_FLAG_HIDDEN);
         break;
     }
     default:
@@ -292,13 +309,10 @@ static void screen_music_btn_list_event_handler (lv_event_t *e)
     switch (code) {
     case LV_EVENT_CLICKED:
     {
-        if ((lv_obj_get_y(guider_ui.screen_music_player) == 0)) {
-            ui_animation(guider_ui.screen_music_player, 1000, 0, lv_obj_get_y(guider_ui.screen_music_player), -285, &lv_anim_path_linear, 0, 0, 0, 0, (lv_anim_exec_xcb_t)lv_obj_set_y, NULL, NULL, NULL);
-            lv_label_set_text(guider_ui.screen_music_btn_list_label,"" LV_SYMBOL_UP " ");
-        } else {
-            ui_animation(guider_ui.screen_music_player, 1000, 0, lv_obj_get_y(guider_ui.screen_music_player), 0, &lv_anim_path_linear, 0, 0, 0, 0, (lv_anim_exec_xcb_t)lv_obj_set_y, NULL, NULL, NULL);
-            lv_label_set_text(guider_ui.screen_music_btn_list_label,"" LV_SYMBOL_DOWN " ");
-        }
+        ui_animation(guider_ui.screen_music_player, 800, 0, lv_obj_get_x(guider_ui.screen_music_player), -240, &lv_anim_path_linear, 0, 0, 0, 0, (lv_anim_exec_xcb_t)lv_obj_set_x, NULL, NULL, NULL);
+        ui_animation(guider_ui.screen_music_player_list, 800, 0, lv_obj_get_x(guider_ui.screen_music_player_list), 0, &lv_anim_path_linear, 0, 0, 0, 0, (lv_anim_exec_xcb_t)lv_obj_set_x, NULL, NULL, NULL);
+        lv_obj_add_flag(guider_ui.screen_music_btn_list, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_remove_flag(guider_ui.screen_music_btn_music, LV_OBJ_FLAG_HIDDEN);
         break;
     }
     default:
@@ -309,6 +323,7 @@ static void screen_music_btn_list_event_handler (lv_event_t *e)
 void events_init_screen_music (lv_ui *ui)
 {
     lv_obj_add_event_cb(ui->screen_music, screen_music_event_handler, LV_EVENT_ALL, ui);
+    lv_obj_add_event_cb(ui->screen_music_btn_music, screen_music_btn_music_event_handler, LV_EVENT_ALL, ui);
     lv_obj_add_event_cb(ui->screen_music_rnd_img, screen_music_rnd_img_event_handler, LV_EVENT_ALL, ui);
     lv_obj_add_event_cb(ui->screen_music_next_img, screen_music_next_img_event_handler, LV_EVENT_ALL, ui);
     lv_obj_add_event_cb(ui->screen_music_pre_img, screen_music_pre_img_event_handler, LV_EVENT_ALL, ui);
