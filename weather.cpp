@@ -27,12 +27,9 @@ void slide_switch(lv_obj_t *frontImg,lv_obj_t *backImg,TIME_TYPE time_type,int n
 
 void wifi_udp_init(){
   uint8_t localPort = 8000;
-  Serial.println("启动UDP");
   Udp.begin(localPort);
-  Serial.println("等待同步...");
   setSyncProvider(getNtpTime);
   setSyncInterval(300);
- 
 }
 /*-------- NTP code ----------*/
 
@@ -311,16 +308,13 @@ void weaterData(String *cityDZ,String *dataSK,String *dataFC)
 void weather_screen_load(SCREEN_LOAD_STAUS status){
     if(status == LOADED){ 
        //字体初始化
+      lv_label_set_text(guider_ui.screen_weather_label_week,"");
+      lv_label_set_text(guider_ui.screen_weather_label_year_month,"");
       lv_obj_set_style_text_font(guider_ui.screen_weather_label_weather_banner, &font_puhui_16_4,  LV_PART_MAIN|LV_STATE_DEFAULT);
       lv_obj_set_style_text_font(guider_ui.screen_weather_label_city, &font_puhui_16_4, LV_PART_MAIN|LV_STATE_DEFAULT);
       lv_obj_set_style_text_font(guider_ui.screen_weather_label_qulaity, &font_puhui_16_4, LV_PART_MAIN|LV_STATE_DEFAULT);
       vTaskDelay(pdMS_TO_TICKS(500));    
       xTaskCreate(data_fresh_task, "data_fresh_task", 4096,NULL, 1, NULL);
-    }else{
-      Udp.flush();
-      Udp.clear();
-      Udp.stop();
     }
-
 }
 

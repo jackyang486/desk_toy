@@ -126,7 +126,6 @@ void lottie_page_load(SCREEN_LOAD_STAUS status)
 {
     if (status == UNLOAD) {
         destroy_lottie_object();
-        lottie_parent = nullptr;
         lottie_files.clear();
         current_lottie = 0;
         return;

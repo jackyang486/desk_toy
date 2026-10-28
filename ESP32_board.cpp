@@ -87,6 +87,10 @@ void Board::scanDir(const char *dirPath,std::vector<String> * filelist,FILE_TYPE
                     if(lower_name.compare(len - 5, 5, ".json") == 0){
                         filelist->push_back(fname);
                     }
+                }else if(file_type == NES_TYPE && len > 4){
+                    if(lower_name.compare(len - 4, 4, ".nes") == 0){
+                        filelist->push_back(fname);
+                    }
                 }
             }
     }

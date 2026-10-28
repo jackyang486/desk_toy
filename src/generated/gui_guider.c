@@ -82,6 +82,7 @@ void init_scr_del_flag(lv_ui *ui)
     ui->screen_mouse_del = true;
     ui->screen_anim_del = true;
     ui->screen_home_del = true;
+    ui->screen_game_del = true;
 }
 
 void setup_bottom_layer(void)

@@ -124,9 +124,8 @@ void wifi_config::main_sreen_loaded_task(){
     xTaskCreate([](void *arg){
      auto *p = static_cast<wifi_config*>(arg);
     if(WiFi.status() == WL_CONNECTED){ //如果是已经连接上了，则显示IP
-         String ipAddrss =  WiFi.localIP().toString();
-          lv_image_set_src(page_head.wifi_img,&_wifiEnbale_RGB565A8_20x20);
-          wifi_udp_init();
+        String ipAddrss =  WiFi.localIP().toString();
+        lv_image_set_src(page_head.wifi_img,&_wifiEnbale_RGB565A8_20x20);
      }else{
          auto& setting = Setting::GetInstance();
          std::pair<String, String>  params =  setting.getWifiConfig();
@@ -142,7 +141,7 @@ void wifi_config::main_sreen_loaded_task(){
                lv_label_set_text(page_head.time_label,"WIFI连接失败");
             }
         }else{
-            
+            lv_label_set_text(page_head.time_label,"请配置wifi");
         }
      }
      // 退出任务

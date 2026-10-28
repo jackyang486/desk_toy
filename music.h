@@ -31,12 +31,7 @@ class Music_player {
     PLAY_STATUS play_status;
    
   public:
-    Music_player(){
-      playEnable = false;
-      playSequence = true;
-      list_start_index = 0;
-      touch_start_Y = 0;
-    };
+    Music_player();
     void playPauseResume();
     void music_loop(SCREEN_LOAD_STAUS playerLoadStatus);
     void music_left_btn(void);

@@ -148,6 +148,9 @@ lv_obj_t *screen_weather;
 	lv_obj_t *screen_home_img_album;
 	lv_obj_t *screen_home_img_game;
 	lv_obj_t *screen_home_img_weather;
+	lv_obj_t *screen_game;
+	bool screen_game_del;
+	lv_obj_t *screen_game_list_game;
 	lv_obj_t *g_kb_top_layer;
 }lv_ui;
 
@@ -186,6 +189,7 @@ void setup_scr_screen_radio(lv_ui *ui);
 void setup_scr_screen_mouse(lv_ui *ui);
 void setup_scr_screen_anim(lv_ui *ui);
 void setup_scr_screen_home(lv_ui *ui);
+void setup_scr_screen_game(lv_ui *ui);
 LV_IMAGE_DECLARE(screen_weather_animimg_astronauti0);
 LV_IMAGE_DECLARE(screen_weather_animimg_astronauti1);
 LV_IMAGE_DECLARE(screen_weather_animimg_astronauti2);

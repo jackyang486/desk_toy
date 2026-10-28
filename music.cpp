@@ -15,8 +15,8 @@
 #define I2S_BCK   5
 #define I2S_DOUT  8
 #define I2S_WS    7
-#define MAX_COVER_SIZE 1024*5
-uint8_t coverBuffer[MAX_COVER_SIZE];
+//#define MAX_COVER_SIZE 1024*5
+//uint8_t coverBuffer[MAX_COVER_SIZE];
 
 #define SPECTRUM_BARS 25   // 显示柱数量
 #define SPECTRUM_SRC_BANDS 15 // evt_spectrum 提供的源频段数（库内 NUM_BANDS）
@@ -47,6 +47,10 @@ static volatile uint32_t g_cover_len = 0;
 static char              g_cur_file_path[128] = {0}; // 当前播放文件路径（相对 SD_MMC 挂载点）
 static const char *basePath = "S:/music";
 
+Music_player::Music_player():playEnable(false),playSequence(false),list_start_index(0),touch_start_Y(0){
+      
+};
+
 void on_audio_info(Audio::msg_t msg) {
     switch (msg.e) {
         case Audio::evt_spectrum:
@@ -71,6 +75,7 @@ void on_audio_info(Audio::msg_t msg) {
             if (msg.vec1.size() >= 2) {
                 g_cover_pos = msg.vec1[0];
                 g_cover_len = msg.vec1[1];
+                printf("getted covered");
                 //g_cover_pending = true;   // 交给主线程读文件+显示
             }
             break;
@@ -117,11 +122,11 @@ void deinit_spectrum(void) {
     if (!spectrum_init) return;
     for (int i = 0; i < SPECTRUM_BARS; i++) {
         if (spectrum_bars[i]) {
-            lv_obj_del(spectrum_bars[i]);
+            lv_obj_delete(spectrum_bars[i]);
             spectrum_bars[i] = NULL;
         }
         if (spectrum_peaks[i]) {
-            lv_obj_del(spectrum_peaks[i]);
+            lv_obj_delete(spectrum_peaks[i]);
             spectrum_peaks[i] = NULL;
         }
     }

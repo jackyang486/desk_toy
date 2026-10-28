@@ -19,6 +19,7 @@
 #include "setting.h"
 #include "radio.h"
 #include "lottie.h"
+#include "game.h"
 #include <TimeLib.h>
 #include <vector>
 
@@ -153,17 +154,12 @@ void lvgl_user_init(void)
     lv_screen_param.radio_screen_load = radio_win_load;
     lv_screen_param.lottie_screen_load = lottie_page_load;
     lv_screen_param.weather_screen_load = weather_screen_load;
+    lv_screen_param.game_screen_load = game_screen_load;
     screen_load_register(&lv_screen_param);
 
     setup_ui(&guider_ui);
     events_init(&guider_ui);
     custom_init(&guider_ui);    
-    printf("[MEM] PSRAM total=%u free=%u, internal free=%u, largest DMA block=%u, draw buffer=%u each\n",
-           static_cast<unsigned>(ESP.getPsramSize()),
-           static_cast<unsigned>(heap_caps_get_free_size(MALLOC_CAP_SPIRAM)),
-           static_cast<unsigned>(heap_caps_get_free_size(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT)),
-           static_cast<unsigned>(heap_caps_get_largest_free_block(MALLOC_CAP_DMA)),
-           static_cast<unsigned>(draw_buf_bytes));
 }
 
 static void ui_task(void *parameter);
@@ -173,6 +169,8 @@ void main_sreen_loaded(SCREEN_LOAD_STAUS loadStatus){
    if(loadStatus == LOADED){
     auto& wifiConfig = wifi_config::GetInstance(); 
     wifiConfig.main_sreen_loaded_task(); 
+    printf("Free INTERNAL heap: %lu\n", heap_caps_get_free_size(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT));
+    printf("Largest INTERNAL free block: %lu\n", heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT));
    }else{
     
    }
@@ -191,7 +189,7 @@ void setup() {
   const BaseType_t task_result = xTaskCreatePinnedToCore(
       ui_task,
       "uiTask",
-      40 * 1024,
+      30 * 1024,
       nullptr,
       1,
       nullptr,
@@ -200,8 +198,6 @@ void setup() {
       printf("[TASK] Failed to create UI task\n");
       abort();
   }
-  printf("Free INTERNAL heap: %lu\n", heap_caps_get_free_size(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT));
-  printf("Largest INTERNAL free block: %lu\n", heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT));
 }
 
 static void ui_task(void *parameter) {
@@ -209,12 +205,23 @@ static void ui_task(void *parameter) {
     uint32_t last_resource_log = 0;
     while(1) {
         lv_timer_handler();
-        delay(5);      
+        vTaskDelay(pdMS_TO_TICKS(5));  
+        //game_process_pending();
     }
 }
 
 time_t prevDisplay = 0; // 显示时间
 void loop() {
+     static bool game_was_active = false;
+     if (game_is_active()) {
+         game_was_active = true;
+         delay(5);
+         return;
+     }
+     if (game_was_active) {
+         last_touch_time = millis();
+         game_was_active = false;
+     }
     if (now() != prevDisplay) {
         prevDisplay = now();
         if(lv_screen_active() == guider_ui.screen_weather){

@@ -28,6 +28,7 @@ void events_init_screen_radio(lv_ui *ui);
 void events_init_screen_mouse(lv_ui *ui);
 void events_init_screen_anim(lv_ui *ui);
 void events_init_screen_home(lv_ui *ui);
+void events_init_screen_game(lv_ui *ui);
 
 #ifdef __cplusplus
 }

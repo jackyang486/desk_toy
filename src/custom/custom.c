@@ -190,6 +190,8 @@ void screen_load_execute(lv_obj_t *obj,SCREEN_LOAD_STAUS loadStatus){
         screen_load_method->weather_screen_load(loadStatus);
     }else if(obj == guider_ui.screen_anim){
         screen_load_method->lottie_screen_load(loadStatus);
+    }else if(obj == guider_ui.screen_game){
+        screen_load_method->game_screen_load(loadStatus);
     }
 
 }

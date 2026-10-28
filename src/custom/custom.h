@@ -37,6 +37,7 @@ typedef struct {
     screen_load_callback_t radio_screen_load;
     screen_load_callback_t lottie_screen_load;
     screen_load_callback_t weather_screen_load;
+    screen_load_callback_t game_screen_load;
 }screen_load;
 
 typedef struct {
