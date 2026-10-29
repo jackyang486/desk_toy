@@ -553,19 +553,6 @@ void setup_scr_screen_weather(lv_ui *ui)
     lv_obj_set_style_pad_left(ui->screen_weather_label_city, 0, LV_PART_MAIN|LV_STATE_DEFAULT);
     lv_obj_set_style_shadow_width(ui->screen_weather_label_city, 0, LV_PART_MAIN|LV_STATE_DEFAULT);
 
-    //Write codes screen_weather_wifi_icon
-    ui->screen_weather_wifi_icon = lv_image_create(ui->screen_weather);
-    lv_obj_set_pos(ui->screen_weather_wifi_icon, 3, 3);
-    lv_obj_set_size(ui->screen_weather_wifi_icon, 20, 20);
-    lv_obj_add_flag(ui->screen_weather_wifi_icon, LV_OBJ_FLAG_HIDDEN);
-    lv_obj_add_flag(ui->screen_weather_wifi_icon, LV_OBJ_FLAG_CLICKABLE);
-    lv_image_set_src(ui->screen_weather_wifi_icon, &_wifiEnbale_RGB565A8_20x20);
-    lv_image_set_pivot(ui->screen_weather_wifi_icon, 50,50);
-    lv_image_set_rotation(ui->screen_weather_wifi_icon, 0);
-
-    //Write style for screen_weather_wifi_icon, Part: LV_PART_MAIN, State: LV_STATE_DEFAULT.
-    lv_obj_set_style_image_recolor_opa(ui->screen_weather_wifi_icon, 0, LV_PART_MAIN|LV_STATE_DEFAULT);
-    lv_obj_set_style_image_opa(ui->screen_weather_wifi_icon, 255, LV_PART_MAIN|LV_STATE_DEFAULT);
 
     //The custom code of screen_weather.
 

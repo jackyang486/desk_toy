@@ -5,6 +5,8 @@
 
 void wifi_screen_load(SCREEN_LOAD_STAUS status);
 void main_sreen_loaded(SCREEN_LOAD_STAUS loadStatus);
+// 定义在 main.cpp：创建 NTP 同步任务并完成 setTime()。WiFi 连上后调用。
+void wifi_udp_init(void);
 
 
 

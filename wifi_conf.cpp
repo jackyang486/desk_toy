@@ -121,32 +121,29 @@ void wifi_config::wifi_list_click_event(lv_event_t *e) {
 //主屏加载后,自动连接wifi
 void wifi_config::main_sreen_loaded_task(){
     // 创建信号量
-    xTaskCreate([](void *arg){
-     auto *p = static_cast<wifi_config*>(arg);
-    if(WiFi.status() == WL_CONNECTED){ //如果是已经连接上了，则显示IP
-        String ipAddrss =  WiFi.localIP().toString();
-        lv_image_set_src(page_head.wifi_img,&_wifiEnbale_RGB565A8_20x20);
-     }else{
-         auto& setting = Setting::GetInstance();
+    if(WiFi.status() == WL_CONNECTED){
+       //String ipAddrss =  WiFi.localIP().toString();
+       lv_image_set_src(page_head.wifi_img,&wifi_fill);
+    }else{
+       xTaskCreate([](void *arg){
+        auto *p = static_cast<wifi_config*>(arg);
+        auto& setting = Setting::GetInstance();
          std::pair<String, String>  params =  setting.getWifiConfig();
          if(!params.first.isEmpty() && !params.second.isEmpty()){
             p->wifi_connect(params.first.c_str(), params.second.c_str());
             if (WiFi.status() == WL_CONNECTED) {
               String ipAddrss =  WiFi.localIP().toString();
-              lv_image_set_src(page_head.wifi_img,&_wifiEnbale_RGB565A8_20x20);
+              lv_image_set_src(page_head.wifi_img,&wifi_fill);
               vTaskDelay(pdMS_TO_TICKS(200));
               wifi_udp_init();
             } else {
-               lv_image_set_src(page_head.wifi_img,&_NOWIFI_RGB565A8_20x20);
-               lv_label_set_text(page_head.time_label,"WIFI连接失败");
+               lv_image_set_src(page_head.wifi_img,&no_wifi);
             }
-        }else{
-            lv_label_set_text(page_head.time_label,"请配置wifi");
         }
-     }
-     // 退出任务
-    vTaskDelete(NULL);
-   }, "main_sreen_loaded_task", 4096*4,this, 2, NULL); 
+        // 退出任务
+        vTaskDelete(NULL);
+      }, "main_sreen_loaded_task", 1024*5,this, 2, NULL); 
+    }
 }
 
 // =========== 扫描WiFi事件 ==========

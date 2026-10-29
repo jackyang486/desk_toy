@@ -22,6 +22,120 @@
 #include "game.h"
 #include <TimeLib.h>
 #include <vector>
+#include <WiFi.h>
+#include <WiFiUdp.h>
+
+/*==================== NTP 时间同步（已从 weather.cpp 迁移到此处） ====================*/
+// NTP服务器
+static const char ntpServerName[] = "ntp6.aliyun.com";
+static const int timeZone = 8;             // 东八区
+#define NTP_SYNC_INTERVAL_SEC  300         // 同步周期（秒）
+#define NTP_SYNC_TASK_STACK    4096
+#define NTP_PACKET_SIZE        48          // NTP 时间位于消息前 48 字节
+#define NTP_LOCAL_PORT         8000
+
+static WiFiUDP ntpUdp;
+static byte ntpPacketBuffer[NTP_PACKET_SIZE];  // 收发 NTP 报文的缓冲
+static TaskHandle_t ntp_task_handle = NULL;
+static SemaphoreHandle_t ntp_udp_mutex = NULL; // 保护 ntpUdp，避免多任务并发
+static bool ntp_task_started = false;
+static volatile bool ntp_time_ready = false;   // 是否已成功同步过一次
+
+static void sendNTPpacket(IPAddress &address);
+static time_t getNtpTime(void);
+
+bool ntp_is_time_ready(void) { return ntp_time_ready; }
+
+// 向 NTP 服务器发送请求
+static void sendNTPpacket(IPAddress &address)
+{
+  memset(ntpPacketBuffer, 0, NTP_PACKET_SIZE);
+  ntpPacketBuffer[0]  = 0b11100011;  // LI, Version, Mode
+  ntpPacketBuffer[1]  = 0;           // Stratum, or type of clock
+  ntpPacketBuffer[2]  = 6;           // Polling Interval
+  ntpPacketBuffer[3]  = 0xEC;        // Peer Clock Precision
+  // 8 bytes of zero for Root Delay & Root Dispersion
+  ntpPacketBuffer[12] = 49;
+  ntpPacketBuffer[13] = 0x4E;
+  ntpPacketBuffer[14] = 49;
+  ntpPacketBuffer[15] = 52;
+  ntpUdp.beginPacket(address, 123);  // NTP requests are to port 123
+  ntpUdp.write(ntpPacketBuffer, NTP_PACKET_SIZE);
+  ntpUdp.endPacket();
+}
+
+static time_t getNtpTime(void)
+{
+  IPAddress ntpServerIP;
+
+  // 原来是 "while (Udp.parsePacket() > 0);" —— 无超时、不让出 CPU，
+  // 一旦 UDP 状态异常就会变成死循环。这里加上时间上限并让出 CPU。
+  uint32_t drainStart = millis();
+  while (ntpUdp.parsePacket() > 0 && (millis() - drainStart < 100)) {
+    vTaskDelay(pdMS_TO_TICKS(1));
+  }
+  WiFi.hostByName(ntpServerName, ntpServerIP);
+  sendNTPpacket(ntpServerIP);
+  uint32_t beginWait = millis();
+  while (millis() - beginWait < 1500) {
+    vTaskDelay(pdMS_TO_TICKS(2));   // 原来是完全忙等，会独占一个核
+    int size = ntpUdp.parsePacket();
+    if (size >= NTP_PACKET_SIZE) {
+      Serial.println("Receive NTP Response");
+      ntpUdp.read(ntpPacketBuffer, NTP_PACKET_SIZE);
+      unsigned long secsSince1900;
+      // convert four bytes starting at location 40 to a long integer
+      secsSince1900  =  (unsigned long)ntpPacketBuffer[40] << 24;
+      secsSince1900 |= (unsigned long)ntpPacketBuffer[41] << 16;
+      secsSince1900 |= (unsigned long)ntpPacketBuffer[42] << 8;
+      secsSince1900 |= (unsigned long)ntpPacketBuffer[43];
+      return secsSince1900 - 2208988800UL + timeZone * SECS_PER_HOUR;
+    }
+  }
+  Serial.println("No NTP Response :-(");
+  return 0;  // 无法获取时间时返回 0
+}
+
+static void ntp_sync_task(void *param) {
+  (void)param;
+  for (;;) {
+    if (WiFi.status() == WL_CONNECTED) {
+      if (ntp_udp_mutex && xSemaphoreTake(ntp_udp_mutex, pdMS_TO_TICKS(2000)) == pdTRUE) {
+        time_t t = getNtpTime();
+        xSemaphoreGive(ntp_udp_mutex);
+        if (t != 0) {
+          setTime(t);
+          ntp_time_ready = true;
+          Serial.println("NTP time synced");
+        }
+      }
+    }
+    vTaskDelay(pdMS_TO_TICKS(NTP_SYNC_INTERVAL_SEC * 1000));
+  }
+}
+
+// WiFi 连上后由 wifi_conf.cpp 调用
+void wifi_udp_init(void) {
+  ntpUdp.begin(NTP_LOCAL_PORT);
+  // 不使用 setSyncProvider：now() 一旦注册了 provider，就可能在任意调用点
+  // （包括 Arduino loop()）触发 getNtpTime()，而该函数内含阻塞式 DNS + 最长 1.5s
+  // 等待，会直接把调用线程卡死。改为后台任务定时同步 + setTime()，
+  // 让 now() 退化为纯本地计算，永不阻塞。
+  if (!ntp_task_started) {
+    ntp_task_started = true;
+    if (ntp_udp_mutex == NULL) ntp_udp_mutex = xSemaphoreCreateMutex();
+    xTaskCreatePinnedToCore(
+        ntp_sync_task,
+        "ntp_sync_task",
+        NTP_SYNC_TASK_STACK,
+        NULL,
+        2,
+        &ntp_task_handle,
+        tskNO_AFFINITY);
+  }
+}
+/*================== NTP 结束 ==================*/
+
 
 #define LV_LVGL_H_INCLUDE_SIMPLE
 #define TOUCH_FT6336_INT 17
@@ -31,6 +145,9 @@
 static lv_display_t *display = NULL;
 static lv_color_t *buf1 = NULL;
 static lv_color_t *buf2 = NULL;
+
+// 顶栏/天气页时间刷新定时器回调（定义在文件后部）
+static void time_update_cb(lv_timer_t *t);
 
 lv_ui guider_ui;
 screen_load lv_screen_param;
@@ -159,10 +276,14 @@ void lvgl_user_init(void)
 
     setup_ui(&guider_ui);
     events_init(&guider_ui);
-    custom_init(&guider_ui);    
+    custom_init(&guider_ui);
+
+    // 顶栏时间交给 LVGL 定时器（运行在 ui_task 线程），1s 触发一次
+    lv_timer_create(time_update_cb, 1000, NULL);
 }
 
 static void ui_task(void *parameter);
+static TaskHandle_t ui_task_handle = NULL;   // 用于观测 ui_task 栈水位，便于把栈调到合适大小
 
 //=========== 主屏加载完成时间 ==========
 void main_sreen_loaded(SCREEN_LOAD_STAUS loadStatus){
@@ -189,10 +310,10 @@ void setup() {
   const BaseType_t task_result = xTaskCreatePinnedToCore(
       ui_task,
       "uiTask",
-      30 * 1024,
+      20 * 1024,
       nullptr,
       1,
-      nullptr,
+      &ui_task_handle,
       1);
   if (task_result != pdPASS) {
       printf("[TASK] Failed to create UI task\n");
@@ -200,44 +321,75 @@ void setup() {
   }
 }
 
+// ============ LVGL 心跳归属交接 ============
+// lottie 动画（rlottie 解析 + 逐帧渲染）需要很大的栈，如果常驻在 ui_task 上，
+// 就必须把 ui_task 的栈一直开到很大，白白占用 internal DRAM。
+// 现在的做法：进入 lottie 页面时，由 lottie.cpp 创建一个专用任务接管 lv_timer_handler()，
+// ui_task 在此期间完全不进入 LVGL；退出页面时该任务自行退出并把心跳交还 ui_task。
+// 这样"大栈"只在 lottie 页面存在，退出后 40KB 栈连同 TCB 一起还给堆。
+volatile bool g_lvgl_external_active  = false;  // true：外部任务正在驱动 lv_timer_handler()
+
 static void ui_task(void *parameter) {
     (void)parameter;
     uint32_t last_resource_log = 0;
     while(1) {
-        lv_timer_handler();
+        if (!g_lvgl_external_active) {
+            lv_timer_handler();
+        }
         vTaskDelay(pdMS_TO_TICKS(5));  
-        //game_process_pending();
+        game_process_pending();
     }
 }
 
-time_t prevDisplay = 0; // 显示时间
-void loop() {
-     static bool game_was_active = false;
-     if (game_is_active()) {
-         game_was_active = true;
-         delay(5);
-         return;
-     }
-     if (game_was_active) {
-         last_touch_time = millis();
-         game_was_active = false;
-     }
-    if (now() != prevDisplay) {
-        prevDisplay = now();
-        if(lv_screen_active() == guider_ui.screen_weather){
-            digitalClockDisplay(prevDisplay);
-        }else{
-          if(minute(prevDisplay)!=Minute_sign || hour(prevDisplay)!=Hour_sign)//分钟刷新
-            {
-                char time_buff[128];
-                sprintf(time_buff, "%d%d:%d%d", 
-                hour(prevDisplay)/10, hour(prevDisplay)%10,minute(prevDisplay)/10,minute(prevDisplay)%10);
-                lv_label_set_text(page_head.time_label,time_buff);
-                Hour_sign = hour(prevDisplay);
-                Minute_sign = minute(prevDisplay);
-            }
-        }
+// 顶栏时间刷新：运行在 LVGL 定时器里（即 ui_task 线程），
+// 避免在 Arduino loop() 线程里跨线程调用 lv_label_set_text()。
+static void time_update_cb(lv_timer_t *t) {
+    (void)t;
+    // NTP 还没同步成功时不刷新，避免顶栏先闪一个 1970 的开机秒数
+    if (!ntp_time_ready) return;
+    time_t n = now();
+    if (lv_screen_active() == guider_ui.screen_weather) {
+        digitalClockDisplay(n);   // 天气页大表盘，内部自行按 时/分/秒 去重
+        return;
     }
+    // 自己维护去重，不再复用 weather.cpp 的 Hour_sign / Minute_sign，
+    // 避免天气页把它们同步成当前时间后导致顶栏要等整分钟才刷新。
+    static int last_h = -1;
+    static int last_m = -1;
+    const int h = hour(n);
+    const int m = minute(n);
+    if (h == last_h && m == last_m) return;
+    last_h = h;
+    last_m = m;
+
+    char time_buff[16];
+    snprintf(time_buff, sizeof(time_buff), "%02d:%02d", h, m);
+    lv_label_set_text(page_head.time_label, time_buff);
+}
+
+// 设为 1 可周期性打印 ui_task 栈剩余量：lottie 交给独立任务后，
+// 可据此把 setup() 里 ui_task 的 20*1024 调到一个安全的小值
+#define UI_STACK_DEBUG 1
+
+void loop() {
+#if UI_STACK_DEBUG
+    static uint32_t last_stack_log = 0;
+    if (ui_task_handle != NULL && (millis() - last_stack_log > 5000)) {
+        last_stack_log = millis();
+        Serial.printf("[loop] uiTask stack free=%lu bytes\n",
+                      (unsigned long)(uxTaskGetStackHighWaterMark(ui_task_handle) * sizeof(StackType_t)));
+    }
+#endif
+      static bool game_was_active = false;
+      if (game_is_active()) {
+          game_was_active = true;
+          delay(5);
+          return;
+      }
+      if (game_was_active) {
+          last_touch_time = millis();
+          game_was_active = false;
+      }
     const uint32_t timeout = Setting::GetInstance().GetScreenTimeout();
     if (screen_on && timeout > 0 && (millis() - last_touch_time > timeout)) {
             my_lcd.writecommand(TFT_DISPOFF);

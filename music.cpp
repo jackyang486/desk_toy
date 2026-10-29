@@ -33,10 +33,14 @@ static uint8_t spectrum_target_heights[SPECTRUM_BARS];
 static uint8_t spectrum_peak_heights[SPECTRUM_BARS];
 static bool spectrum_init = false;
 void check_list_item(uint16_t idx, bool check);
-#define SWIPE_THRESHOLD 20
-#define LIST_VISIBLE_ITEMS 20 
+#define LIST_VISIBLE_ITEMS 30 
+#define LIST_ITEM_HEIGHT 35    // 与 fill_music_list_panel() 里 lv_obj_set_height(btn, 35) 保持一致
 static bool list_is_touching = false;
+static int32_t list_scroll_start_y = 0;   // 手势开始时的滚动位置，用于算"实际滚过了几条"
 static bool list_swipe_registered = false;
+// list 自身的滑动回调是否注册过。lv_obj_clean() 只删子对象，不会移除 list 本身的回调，
+// 所以这个标志一旦置位就不再清零，避免每次进页面重复 add 一份。
+static bool list_cb_registered = false;
 // [v4.0.0 适配] 新版 ESP32-audioI2S 移除了 getVUlevel()/audio_eof_mp3()/audio_id3image()/audio_id3lyrics()，
 // 统一改由 audio_info_callback() 上抛事件。回调在音频任务（Core 1）里执行，这里用 volatile 全局变量
 // 暂存数据/标志，再交给 LVGL 定时器（主线程）统一处理，保证线程安全。
@@ -137,13 +141,17 @@ void deinit_spectrum(void) {
 
 
 int getRandomInt(int min, int max);
+
 void update_spectrum(void) {
-    if (!spectrum_init || !audio || !audio->isRunning()) {
+    if (!spectrum_init) return;          // 频谱已释放，直接返回（原逻辑仍会访问已置 NULL 的 spectrum_bars[]）
+    if (!audio || !audio->isRunning()) { // 衰减
         for (int i = 0; i < SPECTRUM_BARS; i++) {
             if (spectrum_heights[i] > 0) {
                 spectrum_heights[i] -= (spectrum_heights[i] > 4) ? 4 : 1;
-                lv_obj_set_height(spectrum_bars[i], spectrum_heights[i]);
-                lv_obj_set_y(spectrum_bars[i], SPECTRUM_START_Y - spectrum_heights[i]);
+                if (spectrum_bars[i]) {
+                    lv_obj_set_height(spectrum_bars[i], spectrum_heights[i]);
+                    lv_obj_set_y(spectrum_bars[i], SPECTRUM_START_Y - spectrum_heights[i]);
+                }
             }
             if (spectrum_peak_heights[i] > spectrum_heights[i]) spectrum_peak_heights[i]--;
             if (spectrum_peak_heights[i] < spectrum_heights[i]) spectrum_peak_heights[i] = spectrum_heights[i];
@@ -210,6 +218,14 @@ static lv_anim_t album_anim;
 uint32_t total_sec = 1;
 static bool music_screen_load = false;
 static lv_timer_t *music_timer = NULL;  // 静态，只在本文件可见
+// 音频喂数据任务句柄。注意 xTaskCreate* 的栈深度单位是 word：
+// 原来 1024*20 = 80KB，且动态任务的 TCB+栈优先从 internal DRAM 分配，
+// 这正是退出音乐页后 main.cpp 里 "Largest INTERNAL free block" 掉 ~40K 的主因。
+// 24KB 是实测够用的值：internal DRAM 碎片化后最大连续块常见只有 30~45KB，
+// 32KB 的栈已经处在"随时可能创建失败"的边缘，降到 24KB 能显著降低失败概率。
+// 实际用量看串口的 "[music] task exit, stack free=" 打印，再往下调。
+#define MUSIC_TASK_STACK_WORDS  (1024 * 6)
+static TaskHandle_t music_back_task_handle = NULL;
 
 //音乐播放上一曲
 void music_prev(){
@@ -233,7 +249,7 @@ void Music_player::play_music()
     total_sec = 1;
     if(current_music < 0) current_music = music_files.size() - 1;
     if(current_music >= music_files.size()) current_music = 0;
-    String musicFile = music_files.at(current_music);
+    const String& musicFile = music_files.at(current_music);  // 不再拷贝 String，避免每次切歌多分配一块 DRAM
     lv_obj_clear_flag(guider_ui.screen_music_pause_img, LV_OBJ_FLAG_HIDDEN);
     lv_obj_add_flag(guider_ui.screen_music_playing_img, LV_OBJ_FLAG_HIDDEN);
     //设置歌手和歌曲名称
@@ -328,6 +344,9 @@ void music_back_task(void *pvParam){
     audio->loop();
     vTaskDelay(1);
   }
+  printf("[music] task exit, stack free=%u bytes\n",
+         (unsigned)(uxTaskGetStackHighWaterMark(NULL) * sizeof(StackType_t)));
+  music_back_task_handle = NULL;  // 先清句柄，通知主线程本任务已退出
   vTaskDelete(NULL);
 }
 // LVGL 定时器：刷新播放时间（安全，不会崩溃）
@@ -368,7 +387,8 @@ void change_list_other_item_style(uint16_t idx) {
     if (!list) return;
     for (int i = 0; i < LIST_VISIBLE_ITEMS; i++) {
         lv_obj_t *otherItem = lv_obj_get_child(list, i);
-        lv_obj_t *icon = lv_obj_get_child(otherItem, 0);
+        // 歌曲数不足 LIST_VISIBLE_ITEMS 时 child 数会少于循环次数，这里必须判空
+        if (!otherItem) break;
         int real_idx = (int)(uintptr_t)lv_obj_get_user_data(otherItem);
         if (real_idx == (int)idx) continue;
         lv_obj_set_style_bg_color(otherItem, lv_color_hex(0x343247), LV_PART_MAIN | LV_STATE_DEFAULT);
@@ -376,7 +396,11 @@ void change_list_other_item_style(uint16_t idx) {
 }
 
 void music_list_item_click(lv_event_t *e) {
-    int idx = (int)(uintptr_t)lv_event_get_user_data(e);
+    // 必须取对象上的 user_data：注册回调时传入的索引是"创建那一刻"的，
+    // 列表回收复用后 item 与歌曲的对应关系会变，继续用注册时的值会点到别的歌。
+    lv_obj_t *btn = lv_event_get_target_obj(e);   // LVGL 9 里 lv_event_get_target() 返回 void*
+    if (!btn) return;
+    int idx = (int)(uintptr_t)lv_obj_get_user_data(btn);
     music_player.setCurrentMusic(idx);
     music_player.play_music();
 }
@@ -391,6 +415,7 @@ void check_list_item(uint16_t idx,bool check) {
     lv_obj_t *selectItem = NULL;
     for (int i = 0; i < LIST_VISIBLE_ITEMS; i++) {
         lv_obj_t *item = lv_obj_get_child(list, i);
+        if (!item) break;   // 歌曲数不足 LIST_VISIBLE_ITEMS 时 child 会少于循环次数
         int real_idx = (int)(uintptr_t)lv_obj_get_user_data(item);
         if (real_idx == (int)idx) {
             selectItem = item;
@@ -399,7 +424,6 @@ void check_list_item(uint16_t idx,bool check) {
     } 
     if (selectItem) {
         lv_obj_set_style_bg_color(selectItem, lv_color_hex(0xc6a2a2), LV_PART_MAIN | LV_STATE_DEFAULT);
-        lv_obj_t *icon = lv_obj_get_child(selectItem, 0);
     }
     if(check){
         change_list_other_item_style(idx);
@@ -418,19 +442,22 @@ void  Music_player::fill_music_list_panel(void) {
     if(!list_swipe_registered){
         lv_obj_clean(list);
     }
-    int total = music_files.size();
+    const int total = (int)music_files.size();
     for (int i = list_start_index; i < (list_start_index+LIST_VISIBLE_ITEMS); i++) {
+            if (i < 0 || i >= total) continue;   // 歌曲数不足一屏时 at() 越界会直接 abort()
             const char* songName = music_files.at(i).c_str();
             lv_obj_t *btn = NULL;
             if(list_swipe_registered){  //已加载过了
                 btn = lv_obj_get_child(list, (i-list_start_index));
+                if (btn == NULL) continue;
                 lv_obj_t *label = lv_obj_get_child(btn,1);
-                lv_label_set_text(label,songName);
+                if (label) lv_label_set_text(label,songName);
                 if(music_player.getCurrentMusic() == i){   //如果是播放中的歌曲，则改变背景色和按钮状态
                     lv_obj_set_style_bg_color(btn, lv_color_hex(0xc6a2a2), LV_PART_MAIN | LV_STATE_DEFAULT);
                 }else{
                     lv_obj_set_style_bg_color(btn, lv_color_hex(0x343247), LV_PART_MAIN | LV_STATE_DEFAULT);
                 }
+                // 复用分支不再重复注册回调：每次滑动刷新都 add 一条，会导致 handler 被调用 N 次且节点常驻内存
             }else{
                 btn = lv_list_add_btn(list, &Music, songName);
                 //lv_obj_t *icon = lv_obj_get_child(btn, 0);
@@ -442,10 +469,56 @@ void  Music_player::fill_music_list_panel(void) {
                     lv_obj_set_style_text_color(label, lv_color_hex(0xFFFFFF), LV_PART_MAIN | LV_STATE_DEFAULT);
                 }
                 lv_obj_set_height(btn, 35);
+                // 事件回调只在新建按钮时注册一次
+                lv_obj_add_event_cb(btn, music_list_item_click, LV_EVENT_LONG_PRESSED, (void*)(uintptr_t)i);
             }
             lv_obj_set_user_data(btn, (void*)(uintptr_t)i);
-            lv_obj_add_event_cb(btn, music_list_item_click, LV_EVENT_LONG_PRESSED, (void*)(uintptr_t)i);
     }
+}
+
+// 列表 item 回收复用：不销毁/新建对象，只把滑出视野的 item 搬到另一端并改文本。
+//   n > 0（向上滑，往下翻）：顶部滑出的 n 个 item 依次搬到末尾，下面的 item 整体上移，
+//                            再从 music_files 里取后面的元素补进末尾，补满 count 个。
+//   n < 0（向下滑，往上翻）：末尾的 |n| 个 item 依次搬到顶部，上面的 item 整体下移，
+//                            再从 music_files 里取前面的元素补进顶部。
+// 返回的 real_n 会被夹到合法范围（到头/到尾时实际推进量可能小于 n）。
+static int recycle_music_list(int n)
+{
+    lv_obj_t *list = guider_ui.screen_music_list_music;
+    if (!list || n == 0) return 0;
+
+    const int count = (int)lv_obj_get_child_cnt(list);
+    if (count == 0) return 0;
+
+    const int total = music_player.getMusicFilesSize();
+    const int start = music_player.getListStartIndex();
+
+    // 目标窗口起点，夹到合法范围（歌曲数不足一屏时始终为 0）
+    int new_start = start + n;
+    if (new_start + count > total) new_start = total - count;
+    if (new_start < 0) new_start = 0;
+
+    const int real_n = new_start - start;
+    if (real_n == 0) return 0;   // 已经到头/到尾，无需搬移
+
+    if (real_n > 0) {
+        for (int i = 0; i < real_n; i++) {
+            lv_obj_t *item = lv_obj_get_child(list, 0);
+            if (!item) break;
+            lv_obj_move_to_index(item, count - 1);
+        }
+    } else {
+        for (int i = 0; i < -real_n; i++) {
+            lv_obj_t *item = lv_obj_get_child(list, count - 1);
+            if (!item) break;
+            lv_obj_move_to_index(item, 0);
+        }
+    }
+
+    music_player.setListStartIndex(new_start);
+    // 按新窗口刷新文本/索引/播放高亮：被搬到另一端的 item 会从 music_files 取到新元素
+    music_player.fill_music_list_panel();
+    return real_n;
 }
 
 void music_list_swipe_event_handler(lv_event_t *e) {
@@ -458,34 +531,48 @@ void music_list_swipe_event_handler(lv_event_t *e) {
             if(!list_is_touching){
                 music_player.setTouchStartY(point.y);
                 list_is_touching = true;
+                lv_obj_t *list = guider_ui.screen_music_list_music;
+                list_scroll_start_y = list ? lv_obj_get_scroll_y(list) : 0;
             }
         }
     } else if (code == LV_EVENT_SCROLL_END) {
-        if (!list_is_touching) return;
+        if (!list_is_touching) return;   // 程序滚动触发的事件不再处理，避免递归
         list_is_touching = false;
         lv_indev_t *indev = static_cast<lv_indev_t *>(lv_event_get_param(e));
         if (!indev) return;
 
         lv_point_t point;
         lv_indev_get_point(indev, &point);
-        int16_t delta_y = music_player.getTouchStartY() - point.y;
-        if (abs(delta_y) > SWIPE_THRESHOLD) {
-            int steps = delta_y / SWIPE_THRESHOLD;
-            if (steps != 0) {
-                int list_start_index = music_player.getListStartIndex();
-                int total = music_player.getMusicFilesSize();
-                list_start_index += steps;
-                if(list_start_index<0){
-                    list_start_index = 0;
-                }
-                if ((list_start_index + LIST_VISIBLE_ITEMS) > total) {
-                    list_start_index = total - LIST_VISIBLE_ITEMS;
-                    if (list_start_index < 0) list_start_index = 0;
-                }
-                music_player.setListStartIndex(list_start_index);
-                music_player.fill_music_list_panel();
+        const int16_t delta_y = music_player.getTouchStartY() - point.y;
 
-            }
+        lv_obj_t *list = guider_ui.screen_music_list_music;
+        if (!list) return;
+
+        if (abs(delta_y) >= LIST_ITEM_HEIGHT) {
+            // 用"滚动位置的位移"而不是绝对 scroll_y 来算 n：
+            // 列表静止时可能停在中间，绝对 scroll_y 是十几条，直接拿它当翻页量会跳。
+            // >0 表示内容上移（看后面的歌），<0 表示内容下移（看前面的歌）。
+            int32_t moved = lv_obj_get_scroll_y(list) - list_scroll_start_y;
+            if (moved == 0) moved = delta_y;   // 顶/底被夹住时滚不动，用手指位移兜底
+            const int n = (int)(moved / LIST_ITEM_HEIGHT);
+            if (n != 0) recycle_music_list(n);
+        }
+
+        // 回收复用后按当前窗口复位滚动位置：
+        // 含第 1 首 → 置顶；含最后 1 首 → 置底；否则居中，让视野落在窗口正中
+        // （两端都还有内容，下一次往哪个方向滑都能立刻看到新元素）
+        lv_obj_update_layout(list);   // 先刷新布局，scroll 边界才算得准
+        const int32_t scroll_max = lv_obj_get_scroll_y(list) + lv_obj_get_scroll_bottom(list);
+        const int total_songs = music_player.getMusicFilesSize();
+        const int count = (int)lv_obj_get_child_cnt(list);
+        const int start = music_player.getListStartIndex();
+
+        if (start <= 0) {                                   // 窗口含第 1 首
+            lv_obj_scroll_to_y(list, 0, LV_ANIM_OFF);
+        } else if (count > 0 && (start + count) >= total_songs) {  // 窗口含最后 1 首
+            lv_obj_scroll_to_y(list, scroll_max, LV_ANIM_OFF);
+        } else {
+            lv_obj_scroll_to_y(list, scroll_max / 2, LV_ANIM_OFF);
         }
     }
 }
@@ -493,14 +580,25 @@ void music_list_swipe_event_handler(lv_event_t *e) {
 //循环播放
 void Music_player::music_loop(SCREEN_LOAD_STAUS playerLoadStatus){
     if(playerLoadStatus == LOADED){
+        if (audio != nullptr) return;   // 重入保护：重复 LOADED 会覆盖 audio 指针，导致 PSRAM 与 I2S 通道泄漏
+        g_eof_pending = false;          // 清掉上一轮遗留的切歌标志
+        g_cover_pos = 0;                // 清掉未完成的封面传输状态
+        g_cover_len = 0;
+        list_start_index = 0;           // 列表回到首页，避免与上次退出时的滑动位置错位
+        list_is_touching = false;
+        music_files.reserve(128);       // 预分配，减少扫描期间 vector 反复 realloc 造成的 DRAM 碎片
         board.scanDir(basePath,&music_files,MP3_TYPE);
-        fill_music_list_panel(); 
-        lv_obj_add_event_cb(guider_ui.screen_music_list_music, music_list_swipe_event_handler, LV_EVENT_ALL, NULL);
+        // 事件回调只注册一次：重复注册会让 handler 被重复调用并永久多占一份内存
+        if (!list_cb_registered) {
+            lv_obj_add_event_cb(guider_ui.screen_music_list_music, music_list_swipe_event_handler, LV_EVENT_ALL, NULL);
+            list_cb_registered = true;
+        }
+        fill_music_list_panel();        // 内部依据 list_swipe_registered 决定重建还是复用
         list_swipe_registered = true;
         lv_obj_set_style_text_font(guider_ui.screen_music_label_music_name, &font_puhui_16_4, LV_PART_MAIN|LV_STATE_DEFAULT); 
         init_spectrum();
         if (music_timer == NULL) {
-            music_timer = lv_timer_create(lv_timer_refresh_time, 100, NULL);
+            music_timer = lv_timer_create(lv_timer_refresh_time, 50, NULL);
         }
             playEnable = true;
             // 让渡前先停掉 AI_VOX(I2S_NUM_1)，避免两套 I2S 同时使能驱动同一组 codec 引脚
@@ -520,26 +618,37 @@ void Music_player::music_loop(SCREEN_LOAD_STAUS playerLoadStatus){
             xTaskCreatePinnedToCore(
                         music_back_task,
                         "music_back_task",
-                        1024*20,
+                        MUSIC_TASK_STACK_WORDS,
                         this,
                         2 | portPRIVILEGE_BIT,
-                        NULL,
+                        &music_back_task_handle,
                         xCoreID
             );
+            // 创建失败时句柄仍为 NULL，后续 loop 会在下一次 tick 自然返回，不影响其它清理
             vTaskDelay(pdMS_TO_TICKS(200));
             play_music();
     }else{
         playEnable = false;
-        audio->stopSong();
-        // 先删除 LVGL 定时器（内部访问 audio->），再销毁 Audio 对象
+        // 1) 先停掉 LVGL 定时器（内部会访问 audio->），避免后续销毁过程中再被触发
         if (music_timer != NULL) {
             lv_timer_del(music_timer);
             music_timer = NULL;
         }
+        vTaskDelay(pdMS_TO_TICKS(500));
         deinit_spectrum();
-        // 销毁 Audio 对象：析构函数 stopSong + disable/del I2S_NUM_0 通道 + stopAudioTask + 释放互斥锁
-        delete audio;
-        audio = nullptr;
+        // 3) 销毁 Audio 对象：析构函数 stopSong + disable/del I2S_NUM_0 通道 + stopAudioTask + 释放互斥锁
+        if (audio != nullptr) {
+            audio->stopSong();
+            vTaskDelay(pdMS_TO_TICKS(30));  // 给库内 "PeriodicTask" 留出退出窗口，降低 UAF 概率
+            delete audio;
+            audio = nullptr;
+        }
+        // 让渡引脚前先记录堆状态：reconfigure_gpio() 会重新 enable I2S 通道并申请
+        // DMA 缓冲（cap DMA 只能落内部 SRAM），那之后测会把这笔常驻开销算进"碎片"。
+        // 想看"不含 I2S 复用开销"的真实底数，就看这一行。
+        printf("[music exit] free=%lu largest=%lu\n",
+               (unsigned long)heap_caps_get_free_size(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT),
+               (unsigned long)heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT));
         // 把 codec 的 I2S 引脚让渡回 AI_VOX(I2S_NUM_1)，保证退出后通知音/语音可用
         if (auto dev = board.getAudioDeviceEs8311()) {
             dev->reconfigure_gpio();

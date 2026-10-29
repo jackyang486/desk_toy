@@ -2,7 +2,7 @@
 #define _WEATHER_H_
 #include <arduino.h>
 #include "src/custom/custom.h"
-void wifi_udp_init(void);
+// NTP 相关已迁移到 main.cpp，入口声明见 wifi_conf.h
 void getCityWeater(String cityCode);
 void weaterData(String *cityDZ,String *dataSK,String *dataFC);
 extern volatile bool time_enable;

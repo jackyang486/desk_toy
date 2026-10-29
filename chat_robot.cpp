@@ -452,20 +452,16 @@ void chat_loop() {
       }
     } else if (auto emotion_event = std::get_if<ai_vox::EmotionEvent>(&event)) {
       printf("emotion: %s\n", emotion_event->emotion.c_str());
-      SetEmotion(emotion_event->emotion);
+      SetEmotion(emotion_event->emotion.c_str());
     } else if (auto chat_message_event = std::get_if<ai_vox::ChatMessageEvent>(&event)) {
       switch (chat_message_event->role) {
         case ai_vox::ChatRole::kAssistant: {
           printf("role: assistant, content: %s\n", chat_message_event->content.c_str());
-          //lv_label_set_text(guider_ui.screen_robot_chat_out_put,chat_message_event->content.c_str());
-          //add_chat_message(guider_ui.screen_robot_cont_msg,chat_message_event->content.c_str(),MSG_TYPE_OTHER);
           lv_label_set_text(msg_label,chat_message_event->content.c_str());
           break;
         }
         case ai_vox::ChatRole::kUser: {
           printf("role: user, content: %s\n", chat_message_event->content.c_str());
-          //lv_label_set_text(guider_ui.screen_robot_label_chat_input,chat_message_event->content.c_str());
-          //add_chat_message(guider_ui.screen_robot_cont_msg,chat_message_event->content.c_str(),MSG_TYPE_SELF);
           lv_label_set_text(msg_label,chat_message_event->content.c_str());
           break;
         }

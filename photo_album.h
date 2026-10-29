@@ -19,8 +19,6 @@ class Photo_album {
   private:
     std::vector<String> image_files;
     uint8_t current_img;
-    ImgBuf_t online_buf_a_{};
-    ImgBuf_t online_buf_b_{};
     uint8_t online_active_idx_ = 0;
     bool online_active_ = false;
     volatile int32_t online_seed_ = 1;
@@ -41,6 +39,8 @@ class Photo_album {
     bool hasInitial;
     bool playLocal;
     bool nextBtnCheck;
+    ImgBuf_t online_buf_a_{};
+    ImgBuf_t online_buf_b_{};
     static Photo_album& GetInstance();
     static void image_loop(lv_event_t *e);
     static void img_left_btn(lv_event_t *e);

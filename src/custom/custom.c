@@ -130,7 +130,7 @@ void create_head(){
     lv_obj_set_pos(page_head.wifi_img, 10, 8);
     lv_obj_set_size(page_head.wifi_img, 20, 20);
     lv_obj_add_flag(page_head.wifi_img, LV_OBJ_FLAG_CLICKABLE);
-    lv_image_set_src(page_head.wifi_img, &_wifiEnbale_RGB565A8_20x20);
+    lv_image_set_src(page_head.wifi_img, &no_wifi);
     lv_image_set_pivot(page_head.wifi_img, 50,50);
     lv_image_set_rotation(page_head.wifi_img, 0);
 
@@ -152,9 +152,9 @@ void create_head(){
     lv_obj_set_style_text_letter_space( page_head.time_label, 0, LV_PART_MAIN|LV_STATE_DEFAULT);
     lv_obj_set_style_text_align( page_head.time_label, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN|LV_STATE_DEFAULT);
     lv_obj_set_style_bg_opa( page_head.time_label, 0, LV_PART_MAIN|LV_STATE_DEFAULT);
-    lv_obj_set_style_pad_top( page_head.time_label, 5, LV_PART_MAIN|LV_STATE_DEFAULT);
+    lv_obj_set_style_pad_top( page_head.time_label, 3, LV_PART_MAIN|LV_STATE_DEFAULT);
     lv_obj_set_style_pad_right( page_head.time_label, 0, LV_PART_MAIN|LV_STATE_DEFAULT);
-    lv_obj_set_style_pad_bottom( page_head.time_label, 0, LV_PART_MAIN|LV_STATE_DEFAULT);
+    lv_obj_set_style_pad_bottom( page_head.time_label, 3, LV_PART_MAIN|LV_STATE_DEFAULT);
     lv_obj_set_style_pad_left( page_head.time_label, 0, LV_PART_MAIN|LV_STATE_DEFAULT);
     lv_obj_set_style_shadow_width( page_head.time_label, 0, LV_PART_MAIN|LV_STATE_DEFAULT);     
 

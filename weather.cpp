@@ -4,13 +4,9 @@
 #include <TimeLib.h>
 #include <atomic>
 #include <WiFi.h>
-#include <WiFiUdp.h>
 #include "weather_printf.h"
 #include "wifi_conf.h"
 #include "src/generated/gui_guider.h"
-//NTP服务器
-static const char ntpServerName[] = "ntp6.aliyun.com";
-const int timeZone = 8;     //东八区
 typedef enum{
  HOUR_TYPE,
  MINUTE_TYPE,
@@ -19,72 +15,9 @@ typedef enum{
 #define ANIM_DURATION  400
 WeatherPrintf weatherPrintf;
 WiFiClient wificlient;
-WiFiUDP Udp;
-time_t getNtpTime(void);
-void sendNTPpacket(IPAddress &address);
 void getLocalCityWeather(void);
 void slide_switch(lv_obj_t *frontImg,lv_obj_t *backImg,TIME_TYPE time_type,int num);
 
-void wifi_udp_init(){
-  uint8_t localPort = 8000;
-  Udp.begin(localPort);
-  setSyncProvider(getNtpTime);
-  setSyncInterval(300);
-}
-/*-------- NTP code ----------*/
-
-const int NTP_PACKET_SIZE = 48; // NTP时间在消息的前48字节中
-byte packetBuffer[NTP_PACKET_SIZE]; //buffer to hold incoming & outgoing packets
-
-time_t getNtpTime()
-{
-  IPAddress ntpServerIP; // NTP server's ip address
-
-  while (Udp.parsePacket() > 0) ; // discard any previously received packets
-  WiFi.hostByName(ntpServerName, ntpServerIP);
-  sendNTPpacket(ntpServerIP);
-  uint32_t beginWait = millis();
-  while (millis() - beginWait < 1500) {
-    int size = Udp.parsePacket();
-    if (size >= NTP_PACKET_SIZE) {
-      Serial.println("Receive NTP Response");
-      Udp.read(packetBuffer, NTP_PACKET_SIZE);  // read packet into the buffer
-      unsigned long secsSince1900;
-      // convert four bytes starting at location 40 to a long integer
-      secsSince1900 =  (unsigned long)packetBuffer[40] << 24;
-      secsSince1900 |= (unsigned long)packetBuffer[41] << 16;
-      secsSince1900 |= (unsigned long)packetBuffer[42] << 8;
-      secsSince1900 |= (unsigned long)packetBuffer[43];
-      //Serial.println(secsSince1900 - 2208988800UL + timeZone * SECS_PER_HOUR);
-      return secsSince1900 - 2208988800UL + timeZone * SECS_PER_HOUR;
-    }
-  }
-  Serial.println("No NTP Response :-(");
-  return 0; // 无法获取时间时返回0
-}
-
-// 向NTP服务器发送请求
-void sendNTPpacket(IPAddress &address)
-{
-  // set all bytes in the buffer to 0
-  memset(packetBuffer, 0, NTP_PACKET_SIZE);
-  // Initialize values needed to form NTP request
-  // (see URL above for details on the packets)
-  packetBuffer[0] = 0b11100011;   // LI, Version, Mode
-  packetBuffer[1] = 0;     // Stratum, or type of clock
-  packetBuffer[2] = 6;     // Polling Interval
-  packetBuffer[3] = 0xEC;  // Peer Clock Precision
-  // 8 bytes of zero for Root Delay & Root Dispersion
-  packetBuffer[12] = 49;
-  packetBuffer[13] = 0x4E;
-  packetBuffer[14] = 49;
-  packetBuffer[15] = 52;
-  // all NTP fields have been given values, now
-  // you can send a packet requesting a timestamp:
-  Udp.beginPacket(address, 123); //NTP requests are to port 123
-  Udp.write(packetBuffer, NTP_PACKET_SIZE);
-  Udp.endPacket();
-}
 //时分秒滚动动画
 void slide_switch(lv_obj_t *frontImg,lv_obj_t *backImg,TIME_TYPE time_type,int num)
 {
@@ -122,19 +55,6 @@ void slide_switch(lv_obj_t *frontImg,lv_obj_t *backImg,TIME_TYPE time_type,int n
     lv_anim_set_time(&anim2, ANIM_DURATION);
     lv_anim_set_path_cb(&anim2, lv_anim_path_linear);
     lv_anim_start(&anim2);
-}
-
-
-//每5分钟天气刷新一次
-void data_fresh_task(void *pvParam){
-  vTaskDelay(pdMS_TO_TICKS(500));
-  auto& wifiConfig = wifi_config::GetInstance(); 
-  while(WiFi.status() == WL_CONNECTED){  
-    getCityWeater("101250101");
-    vTaskDelay(pdMS_TO_TICKS(300000));
-  }
-  // 退出任务
-  vTaskDelete(NULL);
 }
 
 // 获取城市天气
@@ -207,8 +127,6 @@ void digitalClockDisplay(time_t nowTime)
     slide_switch(guider_ui.screen_weather_img_hour_2,guider_ui.screen_weather_img_hour_shi,HOUR_TYPE,hour(nowTime)/10);
     slide_switch(guider_ui.screen_weather_img_hour_1,guider_ui.screen_weather_img_hour_ge,HOUR_TYPE,hour(nowTime)%10);
     Hour_sign = hour(nowTime);
-    lv_label_set_text(guider_ui.screen_weather_label_year_month,YearMonthDay().c_str());
-    lv_label_set_text(guider_ui.screen_weather_label_week,week().c_str());
   }
   if(minute(nowTime)!=Minute_sign)//分钟刷新
   {
@@ -225,6 +143,8 @@ void digitalClockDisplay(time_t nowTime)
     slide_switch(guider_ui.screen_weather_img_second_2,guider_ui.screen_weather_img_second_shi,SECOND_TYPE,second(nowTime)/10);
     slide_switch(guider_ui.screen_weather_img_second_1,guider_ui.screen_weather_img_second_ge,SECOND_TYPE,second(nowTime)%10);
     Second_sign = second(nowTime);
+    lv_label_set_text(guider_ui.screen_weather_label_year_month,YearMonthDay().c_str());
+    lv_label_set_text(guider_ui.screen_weather_label_week,week().c_str());
   }
  
 }
@@ -313,8 +233,9 @@ void weather_screen_load(SCREEN_LOAD_STAUS status){
       lv_obj_set_style_text_font(guider_ui.screen_weather_label_weather_banner, &font_puhui_16_4,  LV_PART_MAIN|LV_STATE_DEFAULT);
       lv_obj_set_style_text_font(guider_ui.screen_weather_label_city, &font_puhui_16_4, LV_PART_MAIN|LV_STATE_DEFAULT);
       lv_obj_set_style_text_font(guider_ui.screen_weather_label_qulaity, &font_puhui_16_4, LV_PART_MAIN|LV_STATE_DEFAULT);
-      vTaskDelay(pdMS_TO_TICKS(500));    
-      xTaskCreate(data_fresh_task, "data_fresh_task", 4096,NULL, 1, NULL);
+      if(WiFi.status() == WL_CONNECTED){  
+        getCityWeater("101250101");
+      }
     }
 }
 

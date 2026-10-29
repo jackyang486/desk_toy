@@ -67,6 +67,14 @@ void photo_win_loaded(SCREEN_LOAD_STAUS status){
             carousel_timer = NULL;
         }
         photo_album.stop_online();
+        if(photo_album.online_buf_a_.jpg_buf != nullptr){
+            heap_caps_free(photo_album.online_buf_a_.jpg_buf);
+            photo_album.online_buf_a_.jpg_buf = nullptr;
+        }
+        if(photo_album.online_buf_b_.jpg_buf != nullptr){ 
+            heap_caps_free(photo_album.online_buf_b_.jpg_buf);
+            photo_album.online_buf_b_.jpg_buf = nullptr;
+        }
     }
 }
 //上一张
