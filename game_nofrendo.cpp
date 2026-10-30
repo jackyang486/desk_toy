@@ -3,12 +3,12 @@
 
 #include <Arduino.h>
 #include <TFT_eSPI.h>
-#include <NimBLEDevice.h>
 #include <driver/gpio.h>
 #include <esp_heap_caps.h>
 #include <esp_timer.h>
 #include <freertos/FreeRTOS.h>
 #include "game_nofrendo.h"
+#include "game.h"          // TCP 手柄由 game.cpp 管理：gamepad_read_state()
 
 #include <algorithm>
 #include <cstring>
@@ -33,8 +33,6 @@ namespace {
 constexpr uint32_t kNofrendoSampleRate = 16000;
 constexpr uint32_t kExitHoldMs = 1000;
 constexpr char kConfigPath[] = "/sdcard/nofrendo.cfg";
-constexpr char kGamepadServiceUuid[] = "6E400001-B5A3-F393-E0A9-E50E24DCCA9E";
-constexpr char kGamepadInputUuid[] = "6E400002-B5A3-F393-E0A9-E50E24DCCA9E";
 char kExitPrompt[] = "Release to exit";
 
 uint16_t nes_palette[256] = {};
@@ -48,85 +46,6 @@ void (*audio_callback)(void *buffer, int length) = nullptr;
 constexpr size_t kAudioSamplesPerFrame = kNofrendoSampleRate / NES_REFRESH_RATE;
 int16_t audio_frame[kAudioSamplesPerFrame + 1] = {};
 int audio_sample_remainder = 0;
-portMUX_TYPE controller_mux = portMUX_INITIALIZER_UNLOCKED;
-uint32_t controller_state = 0xFFFFFFFF;
-bool gamepad_started = false;
-
-class GamepadServerCallbacks : public NimBLEServerCallbacks {
-    void onDisconnect(NimBLEServer *, NimBLEConnInfo &, int) override
-    {
-        portENTER_CRITICAL(&controller_mux);
-        controller_state = 0xFFFFFFFF;
-        portEXIT_CRITICAL(&controller_mux);
-        NimBLEDevice::startAdvertising();
-    }
-};
-
-class GamepadInputCallbacks : public NimBLECharacteristicCallbacks {
-    void onWrite(NimBLECharacteristic *characteristic, NimBLEConnInfo &) override
-    {
-        const NimBLEAttValue report = characteristic->getValue();
-        if (report.size() != 2) {
-            return;
-        }
-
-        const uint32_t pressed = static_cast<uint8_t>(report[0]) |
-            (static_cast<uint32_t>(static_cast<uint8_t>(report[1])) << 8);
-        portENTER_CRITICAL(&controller_mux);
-        controller_state = 0xFFFFFFFF ^ (pressed & 0x3FF);
-        portEXIT_CRITICAL(&controller_mux);
-    }
-};
-
-GamepadServerCallbacks gamepad_server_callbacks;
-GamepadInputCallbacks gamepad_input_callbacks;
-
-uint32_t read_controller(void)
-{
-    portENTER_CRITICAL(&controller_mux);
-    const uint32_t state = controller_state;
-    portEXIT_CRITICAL(&controller_mux);
-    return state;
-}
-
-void initialize_controller(void)
-{
-    if (gamepad_started) {
-        return;
-    }
-
-    if (!NimBLEDevice::init("Desk Toy NES Gamepad")) {
-        Serial.println("[GAME] NimBLE initialization failed");
-        return;
-    }
-
-    NimBLEServer *server = NimBLEDevice::createServer();
-    if (!server) {
-        return;
-    }
-    server->setCallbacks(&gamepad_server_callbacks, false);
-
-    NimBLEService *service = server->createService(kGamepadServiceUuid);
-    if (!service) {
-        return;
-    }
-    NimBLECharacteristic *input = service->createCharacteristic(
-        kGamepadInputUuid, NIMBLE_PROPERTY::WRITE | NIMBLE_PROPERTY::WRITE_NR, 2);
-    if (!input) {
-        return;
-    }
-    input->setCallbacks(&gamepad_input_callbacks);
-    if (!server->start()) {
-        return;
-    }
-
-    NimBLEAdvertising *advertising = NimBLEDevice::getAdvertising();
-    advertising->enableScanResponse(true);
-    advertising->addServiceUUID(kGamepadServiceUuid);
-    advertising->setName("Desk Toy NES Gamepad");
-    gamepad_started = advertising->start();
-    Serial.printf("[GAME] BLE gamepad %s\n", gamepad_started ? "ready" : "failed");
-}
 
 void nes_timer_callback(void *)
 {
@@ -273,14 +192,10 @@ void play_audio_frame(void)
     device->Write(audio_frame, static_cast<size_t>(samples));
 }
 
-void controller_init(void)
-{
-    initialize_controller();
-}
-
 uint32_t controller_read_input(void)
 {
-    return read_controller();
+    // 手柄（TCP server）的生命周期由 game.cpp 管理，这里只读取当前按键状态。
+    return gamepad_read_state();
 }
 
 int log_print(const char *message)
@@ -332,7 +247,6 @@ extern "C" int osd_init(void)
 {
     nofrendo_log_chain_logfunc(log_print);
     initialize_audio();
-    controller_init();
     return 0;
 }
 

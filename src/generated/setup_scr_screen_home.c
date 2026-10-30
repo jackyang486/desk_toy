@@ -80,19 +80,6 @@ void setup_scr_screen_home(lv_ui *ui)
     lv_obj_set_style_image_recolor_opa(ui->screen_home_img_wifi, 0, LV_PART_MAIN|LV_STATE_DEFAULT);
     lv_obj_set_style_image_opa(ui->screen_home_img_wifi, 255, LV_PART_MAIN|LV_STATE_DEFAULT);
 
-    //Write codes screen_home_img_setting
-    ui->screen_home_img_setting = lv_image_create(ui->screen_home);
-    lv_obj_set_pos(ui->screen_home_img_setting, 10, 100);
-    lv_obj_set_size(ui->screen_home_img_setting, 50, 50);
-    lv_obj_add_flag(ui->screen_home_img_setting, LV_OBJ_FLAG_CLICKABLE);
-    lv_image_set_src(ui->screen_home_img_setting, &_setup_img2_RGB565A8_50x50);
-    lv_image_set_pivot(ui->screen_home_img_setting, 50,50);
-    lv_image_set_rotation(ui->screen_home_img_setting, 0);
-
-    //Write style for screen_home_img_setting, Part: LV_PART_MAIN, State: LV_STATE_DEFAULT.
-    lv_obj_set_style_image_recolor_opa(ui->screen_home_img_setting, 0, LV_PART_MAIN|LV_STATE_DEFAULT);
-    lv_obj_set_style_image_opa(ui->screen_home_img_setting, 255, LV_PART_MAIN|LV_STATE_DEFAULT);
-
     //Write codes screen_home_img_chatbot
     ui->screen_home_img_chatbot = lv_image_create(ui->screen_home);
     lv_obj_set_pos(ui->screen_home_img_chatbot, 163, 35);
@@ -147,7 +134,7 @@ void setup_scr_screen_home(lv_ui *ui)
 
     //Write codes screen_home_img_weather
     ui->screen_home_img_weather = lv_image_create(ui->screen_home);
-    lv_obj_set_pos(ui->screen_home_img_weather, 10, 214);
+    lv_obj_set_pos(ui->screen_home_img_weather, 10, 100);
     lv_obj_set_size(ui->screen_home_img_weather, 50, 50);
     lv_obj_add_flag(ui->screen_home_img_weather, LV_OBJ_FLAG_CLICKABLE);
     lv_image_set_src(ui->screen_home_img_weather, &_Weather_RGB565A8_50x50);

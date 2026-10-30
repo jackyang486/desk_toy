@@ -77,7 +77,6 @@ void init_scr_del_flag(lv_ui *ui)
     ui->screen_wifi_del = true;
     ui->screen_music_del = true;
     ui->screen_robot_del = true;
-    ui->screen_setting_del = true;
     ui->screen_radio_del = true;
     ui->screen_mouse_del = true;
     ui->screen_anim_del = true;

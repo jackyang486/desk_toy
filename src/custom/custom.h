@@ -23,6 +23,7 @@ typedef enum {
     PRESSED,
     RELEASED,
 } PRESS_STATUS;
+void page_head_value_load(int8_t volume,int8_t brightness_,int8_t expire_time);
 
 typedef void (*screen_load_callback_t)(SCREEN_LOAD_STAUS loadStatus);
 
@@ -45,6 +46,13 @@ typedef struct {
     lv_obj_t  *time_label;
     lv_obj_t  *battery_label;
     lv_obj_t  *pageHeadCont;
+   lv_obj_t  *control_panel;
+    lv_obj_t  *sun_silder;
+    lv_obj_t  *time_silder;
+    lv_obj_t  *volume_silder;
+    lv_obj_t  *sun_label;
+    lv_obj_t  *volume_label;
+    lv_obj_t  *expire_time_label;
 }Page_Head;
 
 extern Page_Head  page_head;
@@ -69,6 +77,10 @@ void weather_play_init(void);
 void show_toast(lv_obj_t *parent, const char *msg);
 void photo_album_open_local(void);
 void photo_album_open_online(void);
+void volume_value_change(int8_t volume);
+void time_value_change(int8_t volume);
+void sun_value_change(int8_t volume);
+
 #ifdef __cplusplus
 }
 

@@ -104,26 +104,8 @@ lv_obj_t *screen_weather;
 	lv_obj_t *screen_music_btn_list_label;
 	lv_obj_t *screen_robot;
 	bool screen_robot_del;
-	lv_obj_t *screen_robot_cont_label;
-	lv_obj_t *screen_robot_label_status;
 	lv_obj_t *screen_robot_cont_msg;
-	lv_obj_t *screen_setting;
-	bool screen_setting_del;
-	lv_obj_t *screen_setting_cont_light_switch;
-	lv_obj_t *screen_setting_label_light_switch_title;
-	lv_obj_t *screen_setting_slider_switch;
-	lv_obj_t *screen_setting_label_light_switch_img;
-	lv_obj_t *screen_setting_label_minute;
-	lv_obj_t *screen_setting_cont_volume;
-	lv_obj_t *screen_setting_label_vol_title;
-	lv_obj_t *screen_setting_slider_volume;
-	lv_obj_t *screen_setting_label_vol_img;
-	lv_obj_t *screen_setting_label_vol_percent;
-	lv_obj_t *screen_setting_cont_bright;
-	lv_obj_t *screen_setting_label_bright_title;
-	lv_obj_t *screen_setting_slider_bright;
-	lv_obj_t *screen_setting_label_bright_img;
-	lv_obj_t *screen_setting_label_bright_percent;
+	lv_obj_t *screen_robot_label_msg;
 	lv_obj_t *screen_radio;
 	bool screen_radio_del;
 	lv_obj_t *screen_radio_list_radio;
@@ -184,7 +166,6 @@ void setup_scr_screen_photo(lv_ui *ui);
 void setup_scr_screen_wifi(lv_ui *ui);
 void setup_scr_screen_music(lv_ui *ui);
 void setup_scr_screen_robot(lv_ui *ui);
-void setup_scr_screen_setting(lv_ui *ui);
 void setup_scr_screen_radio(lv_ui *ui);
 void setup_scr_screen_mouse(lv_ui *ui);
 void setup_scr_screen_anim(lv_ui *ui);
@@ -283,7 +264,9 @@ LV_IMAGE_DECLARE(_robot_img2_RGB565A8_50x50);
 LV_IMAGE_DECLARE(_music_img2_RGB565A8_50x50);
 LV_IMAGE_DECLARE(_Weather_RGB565A8_50x50);
 LV_IMAGE_DECLARE(_game_RGB565A8_50x50);
-
+LV_IMAGE_DECLARE(_time_RGB565A8_30x30);
+LV_IMAGE_DECLARE(_volume_RGB565A8_30x30);
+LV_IMAGE_DECLARE(_sun_RGB565A8_30x30);
 
 LV_FONT_DECLARE(lv_font_montserratMedium_16)
 LV_FONT_DECLARE(lv_font_SourceHanSerifSC_Regular_20)

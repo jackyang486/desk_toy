@@ -12,7 +12,8 @@
 #include "gui_guider.h"
 #include "events_init.h"
 #include "widgets_init.h"
-#include "../custom/custom.h"
+#include "custom.h"
+
 
 
 void setup_scr_screen_robot(lv_ui *ui)
@@ -28,60 +29,46 @@ void setup_scr_screen_robot(lv_ui *ui)
     lv_obj_set_style_bg_image_opa(ui->screen_robot, 255, LV_PART_MAIN|LV_STATE_DEFAULT);
     lv_obj_set_style_bg_image_recolor_opa(ui->screen_robot, 0, LV_PART_MAIN|LV_STATE_DEFAULT);
 
-    //Write codes screen_robot_cont_label
-    ui->screen_robot_cont_label = lv_obj_create(ui->screen_robot);
-    lv_obj_set_pos(ui->screen_robot_cont_label, 0, 0);
-    lv_obj_set_size(ui->screen_robot_cont_label, 240, 36);
-    lv_obj_set_scrollbar_mode(ui->screen_robot_cont_label, LV_SCROLLBAR_MODE_OFF);
-
-    //Write style for screen_robot_cont_label, Part: LV_PART_MAIN, State: LV_STATE_DEFAULT.
-    lv_obj_set_style_border_width(ui->screen_robot_cont_label, 0, LV_PART_MAIN|LV_STATE_DEFAULT);
-    lv_obj_set_style_radius(ui->screen_robot_cont_label, 0, LV_PART_MAIN|LV_STATE_DEFAULT);
-    lv_obj_set_style_bg_opa(ui->screen_robot_cont_label, 0, LV_PART_MAIN|LV_STATE_DEFAULT);
-    lv_obj_set_style_pad_top(ui->screen_robot_cont_label, 0, LV_PART_MAIN|LV_STATE_DEFAULT);
-    lv_obj_set_style_pad_bottom(ui->screen_robot_cont_label, 0, LV_PART_MAIN|LV_STATE_DEFAULT);
-    lv_obj_set_style_pad_left(ui->screen_robot_cont_label, 0, LV_PART_MAIN|LV_STATE_DEFAULT);
-    lv_obj_set_style_pad_right(ui->screen_robot_cont_label, 0, LV_PART_MAIN|LV_STATE_DEFAULT);
-    lv_obj_set_style_shadow_width(ui->screen_robot_cont_label, 0, LV_PART_MAIN|LV_STATE_DEFAULT);
-
-    //Write codes screen_robot_label_status
-    ui->screen_robot_label_status = lv_label_create(ui->screen_robot_cont_label);
-    lv_obj_set_pos(ui->screen_robot_label_status, 71, 3);
-    lv_obj_set_size(ui->screen_robot_label_status, 100, 33);
-    lv_label_set_text(ui->screen_robot_label_status, "");
-    lv_label_set_long_mode(ui->screen_robot_label_status, LV_LABEL_LONG_WRAP);
-
-    //Write style for screen_robot_label_status, Part: LV_PART_MAIN, State: LV_STATE_DEFAULT.
-    lv_obj_set_style_border_width(ui->screen_robot_label_status, 0, LV_PART_MAIN|LV_STATE_DEFAULT);
-    lv_obj_set_style_radius(ui->screen_robot_label_status, 0, LV_PART_MAIN|LV_STATE_DEFAULT);
-    lv_obj_set_style_text_color(ui->screen_robot_label_status, lv_color_hex(0x000000), LV_PART_MAIN|LV_STATE_DEFAULT);
-    lv_obj_set_style_text_font(ui->screen_robot_label_status, &lv_font_montserratMedium_16, LV_PART_MAIN|LV_STATE_DEFAULT);
-    lv_obj_set_style_text_opa(ui->screen_robot_label_status, 255, LV_PART_MAIN|LV_STATE_DEFAULT);
-    lv_obj_set_style_text_letter_space(ui->screen_robot_label_status, 0, LV_PART_MAIN|LV_STATE_DEFAULT);
-    lv_obj_set_style_text_line_space(ui->screen_robot_label_status, 0, LV_PART_MAIN|LV_STATE_DEFAULT);
-    lv_obj_set_style_text_align(ui->screen_robot_label_status, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN|LV_STATE_DEFAULT);
-    lv_obj_set_style_bg_opa(ui->screen_robot_label_status, 0, LV_PART_MAIN|LV_STATE_DEFAULT);
-    lv_obj_set_style_pad_top(ui->screen_robot_label_status, 0, LV_PART_MAIN|LV_STATE_DEFAULT);
-    lv_obj_set_style_pad_right(ui->screen_robot_label_status, 0, LV_PART_MAIN|LV_STATE_DEFAULT);
-    lv_obj_set_style_pad_bottom(ui->screen_robot_label_status, 0, LV_PART_MAIN|LV_STATE_DEFAULT);
-    lv_obj_set_style_pad_left(ui->screen_robot_label_status, 0, LV_PART_MAIN|LV_STATE_DEFAULT);
-    lv_obj_set_style_shadow_width(ui->screen_robot_label_status, 0, LV_PART_MAIN|LV_STATE_DEFAULT);
-
     //Write codes screen_robot_cont_msg
     ui->screen_robot_cont_msg = lv_obj_create(ui->screen_robot);
-    lv_obj_set_pos(ui->screen_robot_cont_msg, 0, 38);
-    lv_obj_set_size(ui->screen_robot_cont_msg, 240, 282);
+    lv_obj_set_pos(ui->screen_robot_cont_msg, 20, 281);
+    lv_obj_set_size(ui->screen_robot_cont_msg, 200, 30);
     lv_obj_set_scrollbar_mode(ui->screen_robot_cont_msg, LV_SCROLLBAR_MODE_OFF);
 
     //Write style for screen_robot_cont_msg, Part: LV_PART_MAIN, State: LV_STATE_DEFAULT.
     lv_obj_set_style_border_width(ui->screen_robot_cont_msg, 0, LV_PART_MAIN|LV_STATE_DEFAULT);
-    lv_obj_set_style_radius(ui->screen_robot_cont_msg, 0, LV_PART_MAIN|LV_STATE_DEFAULT);
-    lv_obj_set_style_bg_opa(ui->screen_robot_cont_msg, 0, LV_PART_MAIN|LV_STATE_DEFAULT);
-    lv_obj_set_style_pad_top(ui->screen_robot_cont_msg, 0, LV_PART_MAIN|LV_STATE_DEFAULT);
-    lv_obj_set_style_pad_bottom(ui->screen_robot_cont_msg, 0, LV_PART_MAIN|LV_STATE_DEFAULT);
-    lv_obj_set_style_pad_left(ui->screen_robot_cont_msg, 0, LV_PART_MAIN|LV_STATE_DEFAULT);
-    lv_obj_set_style_pad_right(ui->screen_robot_cont_msg, 0, LV_PART_MAIN|LV_STATE_DEFAULT);
+    lv_obj_set_style_radius(ui->screen_robot_cont_msg, 10, LV_PART_MAIN|LV_STATE_DEFAULT);
+    lv_obj_set_style_bg_opa(ui->screen_robot_cont_msg, 78, LV_PART_MAIN|LV_STATE_DEFAULT);
+    lv_obj_set_style_bg_color(ui->screen_robot_cont_msg, lv_color_hex(0x000000), LV_PART_MAIN|LV_STATE_DEFAULT);
+    lv_obj_set_style_bg_grad_dir(ui->screen_robot_cont_msg, LV_GRAD_DIR_NONE, LV_PART_MAIN|LV_STATE_DEFAULT);
+    lv_obj_set_style_pad_top(ui->screen_robot_cont_msg, 3, LV_PART_MAIN|LV_STATE_DEFAULT);
+    lv_obj_set_style_pad_bottom(ui->screen_robot_cont_msg, 3, LV_PART_MAIN|LV_STATE_DEFAULT);
+    lv_obj_set_style_pad_left(ui->screen_robot_cont_msg, 8, LV_PART_MAIN|LV_STATE_DEFAULT);
+    lv_obj_set_style_pad_right(ui->screen_robot_cont_msg, 8, LV_PART_MAIN|LV_STATE_DEFAULT);
     lv_obj_set_style_shadow_width(ui->screen_robot_cont_msg, 0, LV_PART_MAIN|LV_STATE_DEFAULT);
+
+    //Write codes screen_robot_label_msg
+    ui->screen_robot_label_msg = lv_label_create(ui->screen_robot_cont_msg);
+    lv_obj_set_pos(ui->screen_robot_label_msg, -2, 2);
+    lv_obj_set_size(ui->screen_robot_label_msg, 184, 20);
+    lv_label_set_text(ui->screen_robot_label_msg, "");
+    lv_label_set_long_mode(ui->screen_robot_label_msg, LV_LABEL_LONG_WRAP);
+
+    //Write style for screen_robot_label_msg, Part: LV_PART_MAIN, State: LV_STATE_DEFAULT.
+    lv_obj_set_style_border_width(ui->screen_robot_label_msg, 0, LV_PART_MAIN|LV_STATE_DEFAULT);
+    lv_obj_set_style_radius(ui->screen_robot_label_msg, 0, LV_PART_MAIN|LV_STATE_DEFAULT);
+    lv_obj_set_style_text_color(ui->screen_robot_label_msg, lv_color_hex(0xffffff), LV_PART_MAIN|LV_STATE_DEFAULT);
+    lv_obj_set_style_text_font(ui->screen_robot_label_msg, &lv_font_montserratMedium_16, LV_PART_MAIN|LV_STATE_DEFAULT);
+    lv_obj_set_style_text_opa(ui->screen_robot_label_msg, 255, LV_PART_MAIN|LV_STATE_DEFAULT);
+    lv_obj_set_style_text_letter_space(ui->screen_robot_label_msg, 0, LV_PART_MAIN|LV_STATE_DEFAULT);
+    lv_obj_set_style_text_line_space(ui->screen_robot_label_msg, 0, LV_PART_MAIN|LV_STATE_DEFAULT);
+    lv_obj_set_style_text_align(ui->screen_robot_label_msg, LV_TEXT_ALIGN_LEFT, LV_PART_MAIN|LV_STATE_DEFAULT);
+    lv_obj_set_style_bg_opa(ui->screen_robot_label_msg, 0, LV_PART_MAIN|LV_STATE_DEFAULT);
+    lv_obj_set_style_pad_top(ui->screen_robot_label_msg, 0, LV_PART_MAIN|LV_STATE_DEFAULT);
+    lv_obj_set_style_pad_right(ui->screen_robot_label_msg, 0, LV_PART_MAIN|LV_STATE_DEFAULT);
+    lv_obj_set_style_pad_bottom(ui->screen_robot_label_msg, 0, LV_PART_MAIN|LV_STATE_DEFAULT);
+    lv_obj_set_style_pad_left(ui->screen_robot_label_msg, 0, LV_PART_MAIN|LV_STATE_DEFAULT);
+    lv_obj_set_style_shadow_width(ui->screen_robot_label_msg, 0, LV_PART_MAIN|LV_STATE_DEFAULT);
 
     //The custom code of screen_robot.
 

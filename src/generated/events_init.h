@@ -23,7 +23,6 @@ void events_init_screen_photo(lv_ui *ui);
 void events_init_screen_wifi(lv_ui *ui);
 void events_init_screen_music(lv_ui *ui);
 void events_init_screen_robot(lv_ui *ui);
-void events_init_screen_setting(lv_ui *ui);
 void events_init_screen_radio(lv_ui *ui);
 void events_init_screen_mouse(lv_ui *ui);
 void events_init_screen_anim(lv_ui *ui);

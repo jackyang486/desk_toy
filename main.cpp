@@ -267,7 +267,6 @@ void lvgl_user_init(void)
     lv_screen_param.robot_screen_load = robot_win_load;
     //lv_screen_param.fly_mouse_screen_load = fly_mouse_win_load;
     lv_screen_param.music_screen_load = music_player_load;
-    lv_screen_param.setting_screen_load = setting_win_load;
     lv_screen_param.radio_screen_load = radio_win_load;
     lv_screen_param.lottie_screen_load = lottie_page_load;
     lv_screen_param.weather_screen_load = weather_screen_load;
