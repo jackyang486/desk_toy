@@ -16,6 +16,7 @@ class wifi_config{
     static void wifi_list_click_event(lv_event_t *e);
   public:
     static wifi_config& GetInstance();
+    void start_wifi_connect();
     void initial();
     void screen_load();
     void wifi_scan_start();

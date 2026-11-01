@@ -119,7 +119,7 @@ void wifi_config::wifi_list_click_event(lv_event_t *e) {
   }
 }
 //主屏加载后,自动连接wifi
-void wifi_config::main_sreen_loaded_task(){
+void wifi_config::start_wifi_connect(){
     // 创建信号量
     if(WiFi.status() == WL_CONNECTED){
        //String ipAddrss =  WiFi.localIP().toString();

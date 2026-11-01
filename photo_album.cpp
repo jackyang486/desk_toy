@@ -145,6 +145,10 @@ void Photo_album::image_loop(lv_event_t *e){
 void Photo_album::img_play_choose(lv_event_t *e){
      auto& photo_album = Photo_album::GetInstance();
      if(photo_album.playLocal){     //播放网络图片
+        if(WiFi.status() != WL_CONNECTED){
+          show_toast(lv_scr_act(), "WIFI未连接!");
+          return;
+        }
         photo_album.playLocal = false;
         photo_album.nextBtnCheck = true;
         photo_album.start_online();

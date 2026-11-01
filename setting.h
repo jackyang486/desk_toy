@@ -17,6 +17,7 @@
 #define LEDC_FREQ 5000
 #define LEDC_RESOLUTION_BITS 8
 
+
 class Setting {
 public:
     static Setting& GetInstance();

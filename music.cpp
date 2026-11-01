@@ -224,7 +224,7 @@ static lv_timer_t *music_timer = NULL;  // 静态，只在本文件可见
 // 24KB 是实测够用的值：internal DRAM 碎片化后最大连续块常见只有 30~45KB，
 // 32KB 的栈已经处在"随时可能创建失败"的边缘，降到 24KB 能显著降低失败概率。
 // 实际用量看串口的 "[music] task exit, stack free=" 打印，再往下调。
-#define MUSIC_TASK_STACK_WORDS  (1024 * 6)
+#define MUSIC_TASK_STACK_WORDS  (1024 * 10)
 static TaskHandle_t music_back_task_handle = NULL;
 
 //音乐播放上一曲

@@ -23,7 +23,7 @@ Setting& Setting::GetInstance() {
 
 Setting::Setting()
     : brightness_(DEFAULT_SCREEN_BRIGHTNESS),
-      volume_(80),
+      volume_(50),
       screen_timeout_ms_(DEFAULT_SCREEN_TIMEOUT_MS){
       LoadSettings();
 }
@@ -45,21 +45,18 @@ void volume_value_change(uint8_t volume) {
     setting.SetVolume(static_cast<uint16_t>(volume)); 
     setting.ApplyVolume(); //硬件设置声音
     board.playMp3(kNotification0mp3, sizeof(kNotification0mp3));
-    setting.SaveSettings();
 }
 
 void sun_value_change(uint8_t brightness) {
     auto& setting = Setting::GetInstance();
     setting.SetScreenBrightness(static_cast<uint8_t>(brightness));
     setting.ApplyBrightness();
-    setting.SaveSettings();
 }
 
 //设置亮屏时间
 void time_value_change(uint8_t expire_time) {
     auto& setting = Setting::GetInstance();
     setting.SetScreenTimeout(expire_time*1000*60);
-    setting.SaveSettings();
 }
 
 void Setting::ApplyBrightness() {

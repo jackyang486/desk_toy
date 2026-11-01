@@ -443,7 +443,7 @@ void chat_loop() {
         if (volume_ptr != nullptr) {
           auto& setting = Setting::GetInstance();
           uint8_t vol = static_cast<uint8_t>(std::max(0, std::min(100, (int)*volume_ptr)));
-          volume_value_change(vol);
+          //volume_value_change(vol);
           printf("on mcp tool call: self.audio_speaker.set_volume, volume: %d\n", vol);
           engine.SendMcpCallResponse(mcp_tool_call_event->id, true);
         } else {
@@ -472,7 +472,7 @@ void chat_loop() {
         if (brightness_ptr != nullptr) {
           int percent = std::max(0, std::min(100, (int)*brightness_ptr));
           auto& setting = Setting::GetInstance();
-          sun_value_change(percent);
+          //sun_value_change(percent);
           printf("on mcp tool call: self.screen.set_brightness, percent: %d", percent);
           engine.SendMcpCallResponse(mcp_tool_call_event->id, true);
         } else {
@@ -487,7 +487,7 @@ void chat_loop() {
         const auto minutes_ptr = mcp_tool_call_event->param<int64_t>("minutes");
         if (minutes_ptr != nullptr) {
           int minutes = static_cast<int>(*minutes_ptr);
-          time_value_change(minutes);
+          //time_value_change(minutes);
           printf("on mcp tool call: self.screen.set_timeout, minutes: %d\n", minutes);
           engine.SendMcpCallResponse(mcp_tool_call_event->id, true);
         } else {
@@ -514,6 +514,10 @@ void xiaozhi_chat_task(void *pvParam){
 
 void robot_win_load(SCREEN_LOAD_STAUS loadstatus){
    if(loadstatus == LOADED){
+        if(WiFi.status() != WL_CONNECTED){
+          show_toast(lv_scr_act(), "WIFI未连接!");
+          return;
+        }
         screen_loaded = true;
         if(!has_initial){
             chat_init();

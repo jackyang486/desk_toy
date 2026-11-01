@@ -5,16 +5,7 @@
 #include <vector>
 #include "src/custom/custom.h"
 
-//#ifdef __cplusplus
-//extern "C" {
-//#endif
 
-//void  deinit_spectrum();
-//void  init_spectrum();
-
-//#ifdef __cplusplus
-//}
-//#endif
 
 typedef enum {
   PAUSED,

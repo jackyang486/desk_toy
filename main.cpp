@@ -287,8 +287,6 @@ static TaskHandle_t ui_task_handle = NULL;   // 用于观测 ui_task 栈水位�
 //=========== 主屏加载完成时间 ==========
 void main_sreen_loaded(SCREEN_LOAD_STAUS loadStatus){
    if(loadStatus == LOADED){
-    auto& wifiConfig = wifi_config::GetInstance(); 
-    wifiConfig.main_sreen_loaded_task(); 
     printf("Free INTERNAL heap: %lu\n", heap_caps_get_free_size(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT));
     printf("Largest INTERNAL free block: %lu\n", heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT));
    }else{
@@ -344,26 +342,27 @@ static void ui_task(void *parameter) {
 // 避免在 Arduino loop() 线程里跨线程调用 lv_label_set_text()。
 static void time_update_cb(lv_timer_t *t) {
     (void)t;
-    // NTP 还没同步成功时不刷新，避免顶栏先闪一个 1970 的开机秒数
-    if (!ntp_time_ready) return;
-    time_t n = now();
-    if (lv_screen_active() == guider_ui.screen_weather) {
-        digitalClockDisplay(n);   // 天气页大表盘，内部自行按 时/分/秒 去重
-        return;
+    if (!(lv_screen_active() == guider_ui.screen_game) && !(lv_screen_active() == guider_ui.screen_robot)){
+        // NTP 还没同步成功时不刷新，避免顶栏先闪一个 1970 的开机秒数
+        if (!ntp_time_ready) return;
+        time_t n = now();
+        if (lv_screen_active() == guider_ui.screen_weather) {
+            digitalClockDisplay(n);   // 天气页大表盘，内部自行按 时/分/秒 去重
+            return;
+        }
+        // 自己维护去重，不再复用 weather.cpp 的 Hour_sign / Minute_sign，
+        // 避免天气页把它们同步成当前时间后导致顶栏要等整分钟才刷新。
+        static int last_h = -1;
+        static int last_m = -1;
+        const int h = hour(n);
+        const int m = minute(n);
+        if (h == last_h && m == last_m) return;
+        last_h = h;
+        last_m = m;
+        char time_buff[16];
+        snprintf(time_buff, sizeof(time_buff), "%02d:%02d", h, m);
+        lv_label_set_text(page_head.time_label, time_buff);
     }
-    // 自己维护去重，不再复用 weather.cpp 的 Hour_sign / Minute_sign，
-    // 避免天气页把它们同步成当前时间后导致顶栏要等整分钟才刷新。
-    static int last_h = -1;
-    static int last_m = -1;
-    const int h = hour(n);
-    const int m = minute(n);
-    if (h == last_h && m == last_m) return;
-    last_h = h;
-    last_m = m;
-
-    char time_buff[16];
-    snprintf(time_buff, sizeof(time_buff), "%02d:%02d", h, m);
-    lv_label_set_text(page_head.time_label, time_buff);
 }
 
 // 设为 1 可周期性打印 ui_task 栈剩余量：lottie 交给独立任务后，

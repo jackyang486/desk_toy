@@ -9,6 +9,7 @@
 
 #ifndef __CUSTOM_H_
 #define __CUSTOM_H_
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -68,6 +69,9 @@ void image_carousel(void);
 void music_prev(void);
 void music_next(void);
 void music_play(void);
+void volume_value_change(uint8_t volume);
+void time_value_change(uint8_t brightness);
+void sun_value_change(uint8_t expire_time);
 void music_random(void);
 void music_sequence(void);
 void music_play_init(void);
@@ -75,15 +79,9 @@ void lv_demo_music_resume(void);
 void lv_demo_music_pause(void);
 void weather_play_init(void);
 void show_toast(lv_obj_t *parent, const char *msg);
-void photo_album_open_local(void);
-void photo_album_open_online(void);
-void volume_value_change(int8_t volume);
-void time_value_change(int8_t volume);
-void sun_value_change(int8_t volume);
 
 #ifdef __cplusplus
 }
-
-
 #endif
+
 #endif /* EVENT_CB_H_ */

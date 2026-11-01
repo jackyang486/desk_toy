@@ -95,6 +95,10 @@ void Radio::PlayStation(size_t index) {
 
  void Radio::radio_screen_load(SCREEN_LOAD_STAUS status){
     if (status == LOADED) {
+        if(WiFi.status() != WL_CONNECTED){
+          show_toast(lv_scr_act(), "WIFI未连接!");
+          return;
+        }
         playing_ = true; 
         FillListUI();
         if (auto dev = board.getAudioDeviceEs8311()) {
@@ -115,7 +119,7 @@ void Radio::PlayStation(size_t index) {
                     vTaskDelay(1);
                 }
                 vTaskDelete(NULL);
-        },"radio_audio_task",1024 * 20,this,2 | portPRIVILEGE_BIT,NULL,1);
+        },"radio_audio_task",1024 * 10,this,2 | portPRIVILEGE_BIT,NULL,1);
     } else {
         StopPlay();
         playing_ = false; 
