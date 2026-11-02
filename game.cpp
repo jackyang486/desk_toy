@@ -142,12 +142,6 @@ void gamepad_start(void)
     if (gamepad_started || gamepad_task_handle != nullptr) {
         return;
     }
-
-    if (WiFi.status() != WL_CONNECTED) {
-        printf("[GAME] WiFi not connected, gamepad server skipped\n");
-        return;
-    }
-
     gamepad_task_stop = false;
     gamepad_server.begin();
     gamepad_server.setNoDelay(true);
@@ -192,59 +186,10 @@ uint32_t gamepad_read_state(void)
 {
     portENTER_CRITICAL(&controller_mux);
     const uint32_t state = controller_state;
-    portEXIT_CRITICAL(&controller_mux);
+    portEXIT_CRITICAL(&controller_mux); 
     return state;
 }
 
-/* ---- 游戏列表页顶部显示 IP:端口 和连接状态 ----
-   挂在 lv_layer_top() 上：generated 的 screen_game 可能被删除重建，
-   顶层对象不会跟着失效，指针不会被悄悄变成野指针。 */
-static lv_obj_t *gamepad_status_label = nullptr;
-static uint32_t gamepad_label_last_update = 0;
-
-static void gamepad_show_status_label(bool show)
-{
-    if (gamepad_status_label == nullptr) {
-        gamepad_status_label = lv_label_create(lv_layer_top());
-        lv_obj_set_width(gamepad_status_label, lv_pct(100));
-        lv_obj_align(gamepad_status_label, LV_ALIGN_TOP_MID, 0, 2);
-        lv_obj_set_style_text_align(gamepad_status_label, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
-        lv_label_set_long_mode(gamepad_status_label, LV_LABEL_LONG_WRAP);   // 屏窄时折行，不裁掉 IP
-        lv_obj_set_style_text_color(gamepad_status_label, lv_color_black(), LV_PART_MAIN);
-        lv_obj_set_style_text_font(gamepad_status_label, &font_puhui_16_4,
-                                   LV_PART_MAIN | LV_STATE_DEFAULT);
-        lv_obj_set_style_bg_color(gamepad_status_label, lv_color_white(), LV_PART_MAIN);
-        lv_obj_set_style_bg_opa(gamepad_status_label, LV_OPA_80, LV_PART_MAIN);
-    }
-    if (show) {
-        lv_obj_remove_flag(gamepad_status_label, LV_OBJ_FLAG_HIDDEN);
-        gamepad_label_last_update = 0;   // 下一帧立刻刷新文本，不用等 500ms
-    } else {
-        lv_obj_add_flag(gamepad_status_label, LV_OBJ_FLAG_HIDDEN);
-    }
-}
-
-// 只能在 ui_task 里调用（LVGL 不是线程安全的）
-static void gamepad_update_status_label(void)
-{
-    if (gamepad_status_label == nullptr || lv_obj_has_flag(gamepad_status_label, LV_OBJ_FLAG_HIDDEN)) {
-        return;
-    }
-    if (millis() - gamepad_label_last_update < 500) {
-        return;
-    }
-    gamepad_label_last_update = millis();
-
-    char text[64];
-    if (WiFi.status() == WL_CONNECTED) {
-        snprintf(text, sizeof(text), "Gamepad %s:%u [%s]",
-                 WiFi.localIP().toString().c_str(), static_cast<unsigned>(kGamepadTcpPort),
-                 gamepad_client_connected ? "connected" : "waiting");
-    } else {
-        snprintf(text, sizeof(text), "Gamepad needs WiFi");
-    }
-    lv_label_set_text(gamepad_status_label, text);
-}
 /*================== TCP 手柄结束 ==================*/
 
 static void game_list_item_clicked(lv_event_t *event)
@@ -345,8 +290,6 @@ static void game_list_swipe_event_handler(lv_event_t *event)
 
 void game_process_pending(void)
 {
-    gamepad_update_status_label();   // 在 ui_task 线程里刷新 LVGL 标签，跨线程调用不安全
-
     if (game_resume_pending) {
         game_resume_pending = false;
         game_active.store(false);
@@ -382,18 +325,22 @@ bool game_is_active(void)
 
 void game_screen_load(SCREEN_LOAD_STAUS status)
 {
+    if(WiFi.status() != WL_CONNECTED){
+          show_toast(lv_scr_act(), "WIFI未连接!");
+          return;
+    }
     if (status == UNLOAD) {
         // 退出游戏界面：停掉 TCP server 和收包任务
         gamepad_stop();
-        gamepad_show_status_label(false);
         return;
     }
-
     if (status != LOADED) {
         return;
     }
-    // 进入游戏列表界面即开启手柄服务，这样列表页和进游戏后都能连上手柄
-    gamepad_show_status_label(true);
+    char text[64];
+    snprintf(text, sizeof(text), "%s:%u [%s]",
+                 WiFi.localIP().toString().c_str(), static_cast<unsigned>(kGamepadTcpPort));
+    lv_label_set_text(page_head.time_label, text);
     gamepad_start();
     //game_process_pending();
     game_files.clear();

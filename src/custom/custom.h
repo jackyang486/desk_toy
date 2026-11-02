@@ -54,6 +54,8 @@ typedef struct {
     lv_obj_t  *sun_label;
     lv_obj_t  *volume_label;
     lv_obj_t  *expire_time_label;
+    lv_obj_t  *wifi_switch;
+    lv_obj_t  *wifi_status_label;
 }Page_Head;
 
 extern Page_Head  page_head;
@@ -72,6 +74,7 @@ void music_play(void);
 void volume_value_change(uint8_t volume);
 void time_value_change(uint8_t brightness);
 void sun_value_change(uint8_t expire_time);
+void start_connect_wifi();
 void music_random(void);
 void music_sequence(void);
 void music_play_init(void);

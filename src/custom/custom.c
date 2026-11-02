@@ -31,6 +31,7 @@ void music_play(void){ }
 void music_random(void){ }
 void music_sequence(void){ }
 void main_sreen_unloaded(void){ }
+void start_connect_wifi(){}
 #endif
 
 void screen_load_test(SCREEN_LOAD_STAUS loadStatus){
@@ -112,6 +113,13 @@ void volume_change_handler(lv_event_t *e){
     volume_value_change(value);
 }
 
+void wifi_switch_cb(lv_event_t * e)
+{
+    lv_event_code_t code = lv_event_get_code(e);
+    lv_obj_t * sw = lv_event_get_target_obj(e);
+    start_connect_wifi();
+}
+
 void page_head_value_load(int8_t volume,int8_t brightness_,int8_t expire_time){
      lv_slider_set_value(page_head.sun_silder, brightness_, LV_ANIM_OFF);
      lv_slider_set_value(page_head.time_silder, expire_time, LV_ANIM_OFF);
@@ -177,8 +185,8 @@ void create_head(){
 
     //Write codes screen_home_ page_head.time_label
     page_head.time_label = lv_label_create(page_head.pageHeadCont);
-    lv_obj_set_pos( page_head.time_label, 55, 6);
-    lv_obj_set_size( page_head.time_label, 130, 20);
+    lv_obj_set_pos( page_head.time_label, 30, 6);
+    lv_obj_set_size( page_head.time_label, 170, 20);
     lv_label_set_text( page_head.time_label, "11:25");
 
     //Write style for screen_home_ page_head.time_label, Part: LV_PART_MAIN, State: LV_STATE_DEFAULT.
@@ -198,7 +206,7 @@ void create_head(){
   //Write codes screen_game_cont_control
     page_head.control_panel = lv_obj_create(lv_layer_top());
     lv_obj_set_pos(page_head.control_panel, 0, 30);
-    lv_obj_set_size(page_head.control_panel, 240, 120);
+    lv_obj_set_size(page_head.control_panel, 240, 155);
     lv_obj_set_scrollbar_mode(page_head.control_panel, LV_SCROLLBAR_MODE_OFF);
 
     //Write style for screen_game_cont_control, Part: LV_PART_MAIN, State: LV_STATE_DEFAULT.
@@ -454,10 +462,91 @@ void create_head(){
     lv_obj_set_style_pad_left(page_head.sun_label, 0, LV_PART_MAIN|LV_STATE_DEFAULT);
     lv_obj_set_style_shadow_width(page_head.sun_label, 0, LV_PART_MAIN|LV_STATE_DEFAULT);
 
+  //Write codes screen_game_cont_wifi
+    lv_obj_t *cont_wifi = lv_obj_create(page_head.control_panel);
+    lv_obj_set_pos(cont_wifi, 5, 115);
+    lv_obj_set_size(cont_wifi, 230, 35);
+    lv_obj_set_scrollbar_mode(cont_wifi, LV_SCROLLBAR_MODE_OFF);
+
+    //Write style for screen_game_cont_wifi, Part: LV_PART_MAIN, State: LV_STATE_DEFAULT.
+    lv_obj_set_style_border_width(cont_wifi, 0, LV_PART_MAIN|LV_STATE_DEFAULT);
+    lv_obj_set_style_radius(cont_wifi, 5, LV_PART_MAIN|LV_STATE_DEFAULT);
+    lv_obj_set_style_bg_opa(cont_wifi, 0, LV_PART_MAIN|LV_STATE_DEFAULT);
+    lv_obj_set_style_pad_top(cont_wifi, 0, LV_PART_MAIN|LV_STATE_DEFAULT);
+    lv_obj_set_style_pad_bottom(cont_wifi, 0, LV_PART_MAIN|LV_STATE_DEFAULT);
+    lv_obj_set_style_pad_left(cont_wifi, 0, LV_PART_MAIN|LV_STATE_DEFAULT);
+    lv_obj_set_style_pad_right(cont_wifi, 0, LV_PART_MAIN|LV_STATE_DEFAULT);
+    lv_obj_set_style_shadow_width(cont_wifi, 0, LV_PART_MAIN|LV_STATE_DEFAULT);
+
+    //Write codes screen_game_img_wifi
+    lv_obj_t *cont_wifi_img = lv_image_create(cont_wifi);
+    lv_obj_set_pos(cont_wifi_img, 10, 3);
+    lv_obj_set_size(cont_wifi_img, 30, 30);
+    lv_obj_add_flag(cont_wifi_img, LV_OBJ_FLAG_CLICKABLE);
+    lv_image_set_src(cont_wifi_img, &_wifiEnbale_RGB565A8_30x30);
+    lv_image_set_pivot(cont_wifi_img, 50,50);
+    lv_image_set_rotation(cont_wifi_img, 0);
+
+    //Write style for screen_game_img_wifi, Part: LV_PART_MAIN, State: LV_STATE_DEFAULT.
+    lv_obj_set_style_image_recolor_opa(cont_wifi_img, 0, LV_PART_MAIN|LV_STATE_DEFAULT);
+    lv_obj_set_style_image_opa(cont_wifi_img, 255, LV_PART_MAIN|LV_STATE_DEFAULT);
+
+    //Write codes screen_game_sw_wifi
+    page_head.wifi_switch = lv_switch_create(cont_wifi);
+    lv_obj_set_pos( page_head.wifi_switch, 60, 6);
+    lv_obj_set_size( page_head.wifi_switch, 40, 20);
+
+    //Write style for screen_game_sw_wifi, Part: LV_PART_MAIN, State: LV_STATE_DEFAULT.
+    lv_obj_set_style_bg_opa( page_head.wifi_switch, 255, LV_PART_MAIN|LV_STATE_DEFAULT);
+    lv_obj_set_style_bg_color( page_head.wifi_switch, lv_color_hex(0xc9ff00), LV_PART_MAIN|LV_STATE_DEFAULT);
+    lv_obj_set_style_bg_grad_dir( page_head.wifi_switch, LV_GRAD_DIR_NONE, LV_PART_MAIN|LV_STATE_DEFAULT);
+    lv_obj_set_style_border_width( page_head.wifi_switch, 0, LV_PART_MAIN|LV_STATE_DEFAULT);
+    lv_obj_set_style_radius( page_head.wifi_switch, 10, LV_PART_MAIN|LV_STATE_DEFAULT);
+    lv_obj_set_style_shadow_width( page_head.wifi_switch, 0, LV_PART_MAIN|LV_STATE_DEFAULT);
+
+    //Write style for screen_game_sw_wifi, Part: LV_PART_INDICATOR, State: LV_STATE_CHECKED.
+    lv_obj_set_style_bg_opa( page_head.wifi_switch, 255, LV_PART_INDICATOR|LV_STATE_CHECKED);
+    lv_obj_set_style_bg_color( page_head.wifi_switch, lv_color_hex(0xffb900), LV_PART_INDICATOR|LV_STATE_CHECKED);
+    lv_obj_set_style_bg_grad_dir( page_head.wifi_switch, LV_GRAD_DIR_NONE, LV_PART_INDICATOR|LV_STATE_CHECKED);
+    lv_obj_set_style_border_width( page_head.wifi_switch, 0, LV_PART_INDICATOR|LV_STATE_CHECKED);
+
+    //Write style for screen_game_sw_wifi, Part: LV_PART_KNOB, State: LV_STATE_DEFAULT.
+    lv_obj_set_style_bg_opa( page_head.wifi_switch, 255, LV_PART_KNOB|LV_STATE_DEFAULT);
+    lv_obj_set_style_bg_color( page_head.wifi_switch, lv_color_hex(0xe06105), LV_PART_KNOB|LV_STATE_DEFAULT);
+    lv_obj_set_style_bg_grad_dir( page_head.wifi_switch, LV_GRAD_DIR_NONE, LV_PART_KNOB|LV_STATE_DEFAULT);
+    lv_obj_set_style_border_width( page_head.wifi_switch, 0, LV_PART_KNOB|LV_STATE_DEFAULT);
+    lv_obj_set_style_radius( page_head.wifi_switch, 10, LV_PART_KNOB|LV_STATE_DEFAULT);
+
+    //Write codes screen_game_label_wifi
+    page_head.wifi_status_label = lv_label_create(cont_wifi);
+    lv_obj_set_pos(  page_head.wifi_status_label, 108, 0);
+    lv_obj_set_size(  page_head.wifi_status_label, 30, 30);
+    lv_label_set_text(  page_head.wifi_status_label, "off");
+    lv_label_set_long_mode(  page_head.wifi_status_label, LV_LABEL_LONG_WRAP);
+
+    //Write style for screen_game_label_wifi, Part: LV_PART_MAIN, State: LV_STATE_DEFAULT.
+    lv_obj_set_style_border_width(  page_head.wifi_status_label, 0, LV_PART_MAIN|LV_STATE_DEFAULT);
+    lv_obj_set_style_radius(  page_head.wifi_status_label, 0, LV_PART_MAIN|LV_STATE_DEFAULT);
+    lv_obj_set_style_text_color(  page_head.wifi_status_label, lv_color_hex(0x000000), LV_PART_MAIN|LV_STATE_DEFAULT);
+    lv_obj_set_style_text_font(  page_head.wifi_status_label, &lv_font_montserratMedium_16, LV_PART_MAIN|LV_STATE_DEFAULT);
+    lv_obj_set_style_text_opa(  page_head.wifi_status_label, 255, LV_PART_MAIN|LV_STATE_DEFAULT);
+    lv_obj_set_style_text_letter_space(  page_head.wifi_status_label, 0, LV_PART_MAIN|LV_STATE_DEFAULT);
+    lv_obj_set_style_text_line_space(  page_head.wifi_status_label, 0, LV_PART_MAIN|LV_STATE_DEFAULT);
+    lv_obj_set_style_text_align(  page_head.wifi_status_label, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN|LV_STATE_DEFAULT);
+    lv_obj_set_style_bg_opa(  page_head.wifi_status_label, 0, LV_PART_MAIN|LV_STATE_DEFAULT);
+    lv_obj_set_style_pad_top(  page_head.wifi_status_label, 8, LV_PART_MAIN|LV_STATE_DEFAULT);
+    lv_obj_set_style_pad_right(  page_head.wifi_status_label, 0, LV_PART_MAIN|LV_STATE_DEFAULT);
+    lv_obj_set_style_pad_bottom(  page_head.wifi_status_label, 0, LV_PART_MAIN|LV_STATE_DEFAULT);
+    lv_obj_set_style_pad_left(  page_head.wifi_status_label, 0, LV_PART_MAIN|LV_STATE_DEFAULT);
+    lv_obj_set_style_shadow_width(  page_head.wifi_status_label, 0, LV_PART_MAIN|LV_STATE_DEFAULT);
+
+
     lv_obj_add_event_cb(page_head.pageHeadCont,page_head_click_handler,LV_EVENT_CLICKED,NULL);   
     lv_obj_add_event_cb(page_head.time_silder,time_change_handler,LV_EVENT_VALUE_CHANGED,NULL);
     lv_obj_add_event_cb(page_head.sun_silder,sun_change_handler,LV_EVENT_VALUE_CHANGED,NULL);
     lv_obj_add_event_cb(page_head.volume_silder,volume_change_handler,LV_EVENT_VALUE_CHANGED,NULL);
+    lv_obj_add_event_cb(page_head.wifi_switch,wifi_switch_cb,LV_EVENT_VALUE_CHANGED,NULL);
+
 
 
 }

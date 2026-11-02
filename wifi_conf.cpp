@@ -119,12 +119,13 @@ void wifi_config::wifi_list_click_event(lv_event_t *e) {
   }
 }
 //主屏加载后,自动连接wifi
-void wifi_config::start_wifi_connect(){
+void start_connect_wifi(){
     // 创建信号量
     if(WiFi.status() == WL_CONNECTED){
-       //String ipAddrss =  WiFi.localIP().toString();
-       lv_image_set_src(page_head.wifi_img,&wifi_fill);
+       WiFi.disconnect();
+       WiFi.mode(WIFI_OFF); 
     }else{
+       auto& wifiConfig = wifi_config::GetInstance();
        xTaskCreate([](void *arg){
         auto *p = static_cast<wifi_config*>(arg);
         auto& setting = Setting::GetInstance();
@@ -132,17 +133,22 @@ void wifi_config::start_wifi_connect(){
          if(!params.first.isEmpty() && !params.second.isEmpty()){
             p->wifi_connect(params.first.c_str(), params.second.c_str());
             if (WiFi.status() == WL_CONNECTED) {
-              String ipAddrss =  WiFi.localIP().toString();
               lv_image_set_src(page_head.wifi_img,&wifi_fill);
+              lv_label_set_text(page_head.wifi_status_label, "on");
               vTaskDelay(pdMS_TO_TICKS(200));
               wifi_udp_init();
             } else {
                lv_image_set_src(page_head.wifi_img,&no_wifi);
+               lv_obj_remove_state(page_head.wifi_switch, LV_STATE_CHECKED);
+               lv_label_set_text(page_head.wifi_status_label, "off");
+               
             }
+        }else{
+          show_toast(lv_scr_act(), "WIFI未配置!");
         }
         // 退出任务
         vTaskDelete(NULL);
-      }, "main_sreen_loaded_task", 1024*5,this, 2, NULL); 
+      }, "main_sreen_loaded_task", 1024*5,&wifiConfig, 2, NULL); 
     }
 }
 

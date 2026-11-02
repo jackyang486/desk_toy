@@ -226,6 +226,10 @@ void weaterData(String *cityDZ,String *dataSK,String *dataFC)
 }
 
 void weather_screen_load(SCREEN_LOAD_STAUS status){
+   if(WiFi.status() != WL_CONNECTED){
+          show_toast(lv_scr_act(), "WIFI未连接!");
+          return;
+   }
     if(status == LOADED){ 
        //字体初始化
       lv_label_set_text(guider_ui.screen_weather_label_week,"");
