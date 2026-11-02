@@ -341,6 +341,7 @@ void chat_init() {
    // 长按必须绑定到真正可交互的对象，并允许事件冒泡到父对象，否则容器在某些页面状态下不会触发。
    lv_obj_add_flag(guider_ui.screen_robot, LV_OBJ_FLAG_CLICKABLE);
    lv_obj_add_event_cb(guider_ui.screen_robot, RobotWinLongPressCb, LV_EVENT_LONG_PRESSED, nullptr);
+   lv_obj_set_style_text_font(guider_ui.screen_robot_label_msg, &font_puhui_16_4,  LV_PART_MAIN|LV_STATE_DEFAULT);
 
    //lv_obj_add_flag(guider_ui.screen_robot, LV_OBJ_FLAG_CLICKABLE);
    //lv_obj_add_flag(guider_ui.screen_robot, LV_OBJ_FLAG_GESTURE_BUBBLE);

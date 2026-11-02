@@ -11,6 +11,7 @@
 #include <atomic>
 #include <cstdlib>
 #include <cstdio>
+#include <cstring>
 #include <vector>
 
 static const char *game_directory = "S:/game";
@@ -30,39 +31,65 @@ static bool list_swipe_registered = false;
 
 extern TFT_eSPI my_lcd;
 
-/*==================== TCP 手柄 ====================*/
-// 手柄输入走 WiFi TCP server：手机/PC 上的客户端连到板子 IP:3333，每帧发 2 字节按键位图。
-// 换掉 BLE 的原因：BLE controller+host 常驻要吃掉约 65KB internal DRAM，而且反复
-// init/deinit 会把堆永久打碎（几轮后 init() 直接 fault 重启）、btStop() 还会卡死界面。
-// WiFi 本工程本来就在用，TCP server 几乎不额外占内存。
-//
-// 生命周期同原来一样挂在游戏列表页面上：LOADED 起 server + 收包任务，UNLOAD 停掉。
-// 收包跑在独立任务里，所以 nofrendo 运行时（ui_task 被游戏阻塞）也照样收得到按键。
-//
-// 协议（沿用之前 BLE 那 2 字节报告的语义，小端）：
-//   byte0 bit0..7 = Up Down Left Right Select Start A B
-//   byte1 bit0..1 = 保留（bit8 / bit9）
-//   bit = 1 表示按下。服务端取反后写入 controller_state（nofrendo 侧 bit=0 表示按下）。
+
 static constexpr uint16_t kGamepadTcpPort = 3333;
-static constexpr uint32_t kGamepadClientTimeoutMs = 10000;   // 多久没数据算掉线
+// 多久没收到数据算掉线。不能设太短：手柄完全可能一二十秒不按键（看剧情、菜单里发呆），
+// 之前设 10s 就出现了"连上几秒钟就自己断开"。客户端若想长期挂着不按键，
+// 建议每 20~30s 重发一次当前按键状态当心跳（重发同一帧不会有副作用）。
+static constexpr uint32_t kGamepadClientTimeoutMs = 60000;
 
 static portMUX_TYPE controller_mux = portMUX_INITIALIZER_UNLOCKED;
 static uint32_t controller_state = 0xFFFFFFFF;   // 按键位图，bit=0 表示按下
 
 static WiFiServer gamepad_server(kGamepadTcpPort);
 static WiFiClient gamepad_client;
+static String gamepad_text_line;   // 文本帧（JSON）的行缓冲
 static TaskHandle_t gamepad_task_handle = nullptr;   // 不加 volatile：stop() 要把它的地址传给 xTaskCreate
 static bool volatile gamepad_task_stop = false;
 static bool volatile gamepad_client_connected = false;
 static bool gamepad_started = false;
 
-static void gamepad_apply_report(const uint8_t *report)
+static void gamepad_apply_pressed(uint32_t pressed)
 {
-    const uint32_t pressed = static_cast<uint32_t>(report[0]) |
-                             (static_cast<uint32_t>(report[1]) << 8);
     portENTER_CRITICAL(&controller_mux);
     controller_state = 0xFFFFFFFF ^ (pressed & 0x3FF);
     portEXIT_CRITICAL(&controller_mux);
+}
+
+static void gamepad_apply_report(const uint8_t *report)
+{
+    // 小端 2 字节：byte0 = bit0..7，byte1 = bit8..9
+    const uint32_t pressed = static_cast<uint32_t>(report[0]) |
+                             (static_cast<uint32_t>(report[1]) << 8);
+    gamepad_apply_pressed(pressed);
+}
+
+/* 文本帧（备用 / 调试）：{"type":"nes_gamepad","bitmap":65}\n
+   用串口/网络调试助手手敲一行就能验证链路，不依赖 App 的 hex 编码是否一致。
+   必须是 '{' 开头才会走文本分支，否则按 2 字节二进制解析。 */
+static bool gamepad_apply_text(const char *line)
+{
+    const char *value = strstr(line, "bitmap");
+    if (value) {
+        value = strchr(value, ':');
+        if (!value) {
+            return false;
+        }
+        ++value;
+    } else {
+        value = line;
+    }
+    while (*value == ' ' || *value == '\t') {
+        ++value;
+    }
+
+    char *end = nullptr;
+    const long pressed = strtol(value, &end, 0);
+    if (end == value) {
+        return false;
+    }
+    gamepad_apply_pressed(pressed > 0 ? static_cast<uint32_t>(pressed) : 0);
+    return true;
 }
 
 static void gamepad_reset_state(void)
@@ -75,54 +102,104 @@ static void gamepad_reset_state(void)
 static void gamepad_tcp_task(void *)
 {
     uint32_t last_rx = millis();
+    static uint32_t last_logged_state = 0xFFFFFFFF;
 
     for (;;) {
         if (gamepad_task_stop) {
             break;
         }
 
+        // 每次循环都看一眼 listen，哪怕当前还有客户端连着：
+        // 手机断网/WiFi 重连经常留下"半开连接"——老 socket 看着还连着，实际已经不通了。
+        // 这时新客户端来了要能顶掉它，否则 App 会一直连不上。
+        // accept() 非阻塞：没有待接受的连接时返回的 client 为假
+        WiFiClient incoming = gamepad_server.accept();
+        if (incoming) {
+            if (gamepad_client) {
+                printf("[GAME] gamepad client replaced\n");
+                gamepad_client.stop();
+            }
+            incoming.setNoDelay(true);
+            incoming.setTimeout(1);
+            gamepad_client = incoming;
+            gamepad_client_connected = true;
+            gamepad_text_line = "";
+            last_rx = millis();
+            printf("[GAME] gamepad client %s\n", gamepad_client.remoteIP().toString().c_str());
+            vTaskDelay(pdMS_TO_TICKS(2));
+            continue;
+        }
+
         if (!gamepad_client || !gamepad_client.connected()) {
             if (gamepad_client_connected) {
-                printf("[GAME] gamepad client disconnected\n");
+                printf("[GAME] gamepad client closed by peer\n");
             }
             gamepad_client.stop();
             gamepad_client_connected = false;
+            gamepad_text_line = "";
             gamepad_reset_state();
-
-            // accept() 非阻塞：没有待接受的连接时返回的 client 为假
-            gamepad_client = gamepad_server.accept();
-            if (gamepad_client) {
-                gamepad_client.setNoDelay(true);
-                gamepad_client.setTimeout(1);
-                gamepad_client_connected = true;
-                last_rx = millis();
-                printf("[GAME] gamepad client %s\n", gamepad_client.remoteIP().toString().c_str());
-            }
             vTaskDelay(pdMS_TO_TICKS(10));
             continue;
         }
 
-        const int available = gamepad_client.available();
-        if (available >= 2) {
-            // 客户端发得比我们读得快时只保留最新一帧：手柄输入宁可丢帧也不要延迟。
-            uint8_t scratch[64];
-            int drop = available - 2;
-            while (drop > 0) {
-                const size_t want = drop > 64 ? 64 : static_cast<size_t>(drop);
-                const int got = gamepad_client.read(scratch, want);
-                if (got <= 0) {
+        // 收到任何字节都算活跃（哪怕不足一整帧），心跳格式不同也不会被误判成掉线
+        if (gamepad_client.available() > 0) {
+            last_rx = millis();
+        }
+
+        // 只认 '{' 开头的 JSON 文本帧。别用"是不是数字"来判断：
+        // 二进制帧的低字节可能是 0x30~0x39（例如 Select+Start = 0x30），会被误判成文本。
+        const int head = gamepad_client.peek();
+        if (head == '{') {
+            // 文本帧：按行读取，读满一行再解析
+            while (gamepad_client.available() > 0) {
+                const int ch = gamepad_client.read();
+                if (ch < 0) {
                     break;
                 }
-                drop -= got;
+                if (ch == '\n' || ch == '\r') {
+                    if (gamepad_text_line.length()) {
+                        gamepad_apply_text(gamepad_text_line.c_str());
+                        gamepad_text_line = "";
+                    }
+                    break;
+                }
+                if (gamepad_text_line.length() < 128) {
+                    gamepad_text_line += static_cast<char>(ch);
+                }
             }
-            uint8_t report[2];
-            if (gamepad_client.read(report, 2) == 2) {
-                gamepad_apply_report(report);
-                last_rx = millis();
+            last_rx = millis();
+        } else {
+            const int available = gamepad_client.available();
+            if (available >= 2) {
+                // 客户端发得比我们读得快时只保留最新一帧：手柄输入宁可丢帧也不要延迟。
+                uint8_t scratch[64];
+                int drop = available - 2;
+                while (drop > 0) {
+                    const size_t want = drop > 64 ? 64 : static_cast<size_t>(drop);
+                    const int got = gamepad_client.read(scratch, want);
+                    if (got <= 0) {
+                        break;
+                    }
+                    drop -= got;
+                }
+                uint8_t report[2];
+                if (gamepad_client.read(report, 2) == 2) {
+                    gamepad_apply_report(report);
+                    last_rx = millis();
+                }
             }
         }
 
+        // 按键状态变化打一条日志：串口上一眼就能看出到底收没收着、收到的是什么
+        if (controller_state != last_logged_state) {
+            last_logged_state = controller_state;
+            printf("[GAME] gamepad bitmap 0x%03X\n",
+                   static_cast<unsigned>((~controller_state) & 0x3FF));
+        }
+
         if (millis() - last_rx > kGamepadClientTimeoutMs) {
+            printf("[GAME] gamepad client idle timeout, closing\n");
             gamepad_client.stop();   // 超时断开，下一轮重新 accept
             continue;
         }
@@ -325,10 +402,7 @@ bool game_is_active(void)
 
 void game_screen_load(SCREEN_LOAD_STAUS status)
 {
-    if(WiFi.status() != WL_CONNECTED){
-          show_toast(lv_scr_act(), "WIFI未连接!");
-          return;
-    }
+    // UNLOAD 必须先处理：否则 WiFi 掉线时直接 return，任务和 server 会一直留着
     if (status == UNLOAD) {
         // 退出游戏界面：停掉 TCP server 和收包任务
         gamepad_stop();
@@ -336,6 +410,10 @@ void game_screen_load(SCREEN_LOAD_STAUS status)
     }
     if (status != LOADED) {
         return;
+    }
+    if(WiFi.status() != WL_CONNECTED){
+          show_toast(lv_scr_act(), "WIFI未连接!");
+          return;
     }
     char text[64];
     snprintf(text, sizeof(text), "%s:%u [%s]",
