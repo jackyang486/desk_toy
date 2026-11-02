@@ -4,9 +4,11 @@
 #include "ai_vox_engine.h"
 #include "esp32-hal-ledc.h"
 #include "notification_0_mp3.h"
+#include "SD_MMC.h"
 
 
 static const char* SETTINGS_NAMESPACE = "device_settings";
+static const char* DEFAULT_ONLINE_IMG_URL_BASE = "http://192.168.66.68:5000/proxy?w=240&h=320";
 static const char* KEY_BRIGHTNESS = "brightness";
 static const char* KEY_VOLUME = "volume";
 static const char* KEY_SCREEN_TIMEOUT = "screen_timeout";
@@ -24,7 +26,8 @@ Setting& Setting::GetInstance() {
 Setting::Setting()
     : brightness_(DEFAULT_SCREEN_BRIGHTNESS),
       volume_(50),
-      screen_timeout_ms_(DEFAULT_SCREEN_TIMEOUT_MS){
+      screen_timeout_ms_(DEFAULT_SCREEN_TIMEOUT_MS),
+      online_img_url_base_(DEFAULT_ONLINE_IMG_URL_BASE){
       LoadSettings();
 }
 
@@ -130,4 +133,28 @@ void Setting::LoadSettings() {
     volume_ = prefs_.getUShort(KEY_VOLUME, 80);
     screen_timeout_ms_ = prefs_.getUInt(KEY_SCREEN_TIMEOUT, DEFAULT_SCREEN_TIMEOUT_MS);
     prefs_.end();
+}
+
+void Setting::LoadOnlineImageUrl() {
+    File file = SD_MMC.open("/param.txt", FILE_READ);
+    if (!file) {
+        online_img_url_base_ = DEFAULT_ONLINE_IMG_URL_BASE;
+        printf("[Setting] Failed to open /param.txt; using default image URL");
+        return;
+    }
+
+    String url = file.readStringUntil('\n');
+    file.close();
+    url.trim();
+    if (url.length() == 0) {
+        online_img_url_base_ = DEFAULT_ONLINE_IMG_URL_BASE;
+        printf("[Setting] /param.txt first line is empty; using default image URL");
+        return;
+    }
+
+    online_img_url_base_ = url;
+}
+
+const String& Setting::GetOnlineImageUrlBase() const {
+    return online_img_url_base_;
 }

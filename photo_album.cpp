@@ -3,12 +3,12 @@
 #include "src/custom/confirm_dialog.h"
 #include "ESP32_board.h"
 #include "SD_MMC.h"
+#include "setting.h"
 #include <WiFiClientSecure.h>
 #include <HTTPClient.h>
 #include "esp_heap_caps.h"
 
 static const char *basePath = "S:/photo";
-static const char *ONLINE_IMG_URL_BASE = "http://192.168.66.68:5000/proxy?w=240&h=320"; //"https://onlineimage-production.up.railway.app/proxy?w=240&h=320";
 static lv_timer_t *carousel_timer = NULL;
 
 Photo_album& Photo_album::GetInstance() {
@@ -44,6 +44,7 @@ void Photo_album::scan_image(){
 void photo_win_loaded(SCREEN_LOAD_STAUS status){ 
      auto& photo_album = Photo_album::GetInstance();
     if(status == LOADED){
+        Setting::GetInstance().LoadOnlineImageUrl();
         if(!photo_album.hasInitial){
             photo_album.hasInitial = true;
             photo_album.scan_image();
@@ -241,7 +242,7 @@ void Photo_album::online_download_task(void* pvParam) {
             continue;
         }
         HTTPClient http;
-        String url = String(ONLINE_IMG_URL_BASE) + "&seed=" + String(self->online_seed_);
+        String url = Setting::GetInstance().GetOnlineImageUrlBase();
         if (http.begin(wifi_client, url)) {
             http.setFollowRedirects(HTTPC_STRICT_FOLLOW_REDIRECTS);
             http.setTimeout(10000);

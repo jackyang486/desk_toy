@@ -39,6 +39,9 @@ public:
     void SaveSettings();
     void LoadSettings();
 
+    void LoadOnlineImageUrl();
+    const String& GetOnlineImageUrlBase() const;
+
     std::pair<String, String> getWifiConfig();
     void saveWifiConfig(const char* ssid,const char* pass);
 
@@ -52,6 +55,7 @@ private:
     uint8_t brightness_;
     uint16_t volume_;
     uint32_t screen_timeout_ms_;
+    String online_img_url_base_;
 };
 
 #endif
