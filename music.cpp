@@ -8,6 +8,7 @@
 #include "SD_MMC.h"
 #include "ESP32_board.h"
 #include "ai_vox_engine.h"
+#include "setting.h"
 #include <random>
 #include <chrono>
 #include "Ticker.h"
@@ -601,6 +602,8 @@ void Music_player::music_loop(SCREEN_LOAD_STAUS playerLoadStatus){
             music_timer = lv_timer_create(lv_timer_refresh_time, 50, NULL);
         }
             playEnable = true;
+            // 先（codec 还归 AI_VOX 时）把硬件音量拉满，响度只由软件音量决定
+            Setting::GetInstance().PreparePlaybackVolume();
             // 让渡前先停掉 AI_VOX(I2S_NUM_1)，避免两套 I2S 同时使能驱动同一组 codec 引脚
             if (auto dev = board.getAudioDeviceEs8311()) {
                 dev->disable_i2s();
@@ -612,7 +615,7 @@ void Music_player::music_loop(SCREEN_LOAD_STAUS playerLoadStatus){
             audio->setTone(0, 0, 0);                   // 触发计算 0dB 平坦响应系数，避免 IIR coeffs 全 0 导致静音
             audio->settings.IIR_FILTER = false;        // 绕过 biquad IIR（旧 esp-dsp 与新版库系数约定不兼容造成静音）
             audio->settings.SPECTRUM = true;           // 使能频谱分析（evt_spectrum，新版库默认 false）
-            audio->setVolume(21);                      // v4.0.0 软件音量默认 0（静音），设为满量程 0dB 直通
+            Setting::GetInstance().ApplySoftwareVolume(audio);  // 滑块百分比 → 软件音量（v4.0.0 默认 0 即静音）
             audio->audio_info_callback = on_audio_info; // 注册事件回调，接收频谱/EOF/封面/歌词数据
             const BaseType_t xCoreID = 1;
             xTaskCreatePinnedToCore(
@@ -653,6 +656,8 @@ void Music_player::music_loop(SCREEN_LOAD_STAUS playerLoadStatus){
         if (auto dev = board.getAudioDeviceEs8311()) {
             dev->reconfigure_gpio();
         }
+        // 播放页里调过的音量只落在 Audio 的软件音量上，这里补写回 ES8311 硬件音量
+        Setting::GetInstance().FlushVolumeToHardware();
         music_files.clear();
         music_files.shrink_to_fit();
         lv_obj_clean(guider_ui.screen_music_list_music);

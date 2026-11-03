@@ -46,8 +46,12 @@ void Setting::Init() {
 void volume_value_change(uint8_t volume) {
     auto& setting = Setting::GetInstance();
     setting.SetVolume(static_cast<uint16_t>(volume)); 
-    setting.ApplyVolume(); //硬件设置声音
-    board.playMp3(kNotification0mp3, sizeof(kNotification0mp3));
+    setting.ApplyVolume(); //播放页里走软件音量，其余场景写硬件音量
+    // MP3/电台播放页里 AI_VOX 的 I2S 通道已被 disable_i2s() 停掉，
+    // 此时 playMp3() 写失败的通道会走 CLOGE + abort()，所以播放期间不出提示音
+    if (audio == nullptr) {
+        board.playMp3(kNotification0mp3, sizeof(kNotification0mp3));
+    }
 }
 
 void sun_value_change(uint8_t brightness) {
@@ -67,12 +71,50 @@ void Setting::ApplyBrightness() {
     ledcWrite(TFT_BL_PIN, raw);
 }
 
-void Setting::ApplyVolume() {
+// 只有 AI_VOX 独占 codec 时才能安全写 ES8311 寄存器
+void Setting::ApplyHardwareVolume() {
     auto audio_device = board.getAudioDeviceEs8311();
     if (audio_device) {
         uint16_t raw = static_cast<uint16_t>(volume_* 255 / 100);
         audio_device->set_volume(raw);
     }
+    hw_volume_dirty_ = false;
+}
+
+void Setting::ApplyVolume() {
+    // MP3/电台页面播放期间，codec 的 I2S 时钟与 GPIO 由 ESP32-audioI2S 接管：
+    // AI_VOX 的 I2S_NUM_1 已被 disable_i2s() 停掉，Audio 又把同一组引脚重配成 I2S_NUM_0，
+    // 这时再走 esp_codec_dev_set_out_vol() 去写 ES8311（依赖 MCLK/I2S 时钟的 codec），
+    // 实测会直接崩溃。所以播放期间只调库的软件音量，硬件音量等退出播放页后再补写。
+    if (audio != nullptr) {
+        ApplySoftwareVolume(audio);
+        return;
+    }
+    ApplyHardwareVolume();
+}
+
+// 进播放页、还没 disable_i2s() 时调用：硬件音量拉满，响度完全交给软件音量，
+// 这样同一个滑块位置在播放页和其它页面听起来一致（避免两层衰减叠加）。
+void Setting::PreparePlaybackVolume() {
+    auto dev = board.getAudioDeviceEs8311();
+    if (dev == nullptr) return;
+    dev->set_volume(255);
+    hw_volume_dirty_ = true;   // 退出播放页时按 volume_ 恢复硬件音量
+}
+
+void Setting::ApplySoftwareVolume(Audio* player) {
+    if (player == nullptr) return;
+    hw_volume_dirty_ = true;
+    uint8_t steps = player->getVolumeSteps();
+    if (steps == 0) steps = 21;
+    player->setVolume(static_cast<uint8_t>(volume_ * steps / 100));
+}
+
+// 退出播放页（audio 已 delete、reconfigure_gpio() 已把 codec 让渡回 AI_VOX）后调用
+void Setting::FlushVolumeToHardware() {
+    if (audio != nullptr) return;   // 还在播放页，硬件仍归另一个库管
+    if (!hw_volume_dirty_) return;
+    ApplyHardwareVolume();
 }
 
 
@@ -151,8 +193,8 @@ void Setting::LoadOnlineImageUrl() {
         printf("[Setting] /param.txt first line is empty; using default image URL");
         return;
     }
-
     online_img_url_base_ = url;
+    printf("[Setting] /param.txt first line：%s\n",online_img_url_base_.c_str());
 }
 
 const String& Setting::GetOnlineImageUrlBase() const {

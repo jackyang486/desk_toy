@@ -25,8 +25,11 @@ class Photo_album {
     TaskHandle_t online_task_handle_ = nullptr;
     SemaphoreHandle_t online_img_sem_ = nullptr;
     SemaphoreHandle_t online_img_show_sem_ = nullptr;
-    SemaphoreHandle_t online_save_mutex_ = nullptr;
+    // 下载任务只置这个标志，真正的 lv_image_set_src() 必须回到主线程做：LVGL 不是线程安全的
+    volatile bool online_display_pending_ = false;
+    lv_timer_t *online_view_timer_ = nullptr;
     static void online_download_task(void* pvParam);
+    static void lv_timer_online_view(lv_timer_t *timer);
     static void lv_timer_img_carousel(lv_timer_t *timer);
     bool allocate_online_buf(ImgBuf_t& buf);
     void display_online_image();

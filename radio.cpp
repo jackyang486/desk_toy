@@ -4,6 +4,7 @@
 #include <WiFi.h>
 #include "ESP32_board.h"
 #include "ai_vox_engine.h"
+#include "setting.h"
 
 #define I2S_MCK   4
 #define I2S_BCK   5
@@ -101,6 +102,8 @@ void Radio::PlayStation(size_t index) {
         }
         playing_ = true; 
         FillListUI();
+        // 先（codec 还归 AI_VOX 时）把硬件音量拉满，响度只由软件音量决定
+        Setting::GetInstance().PreparePlaybackVolume();
         if (auto dev = board.getAudioDeviceEs8311()) {
                 dev->disable_i2s();
         }
@@ -109,7 +112,7 @@ void Radio::PlayStation(size_t index) {
         audio->setTone(0, 0, 0);                   // 触发计算 0dB 平坦响应系数，避免 IIR coeffs 全 0 导致静音
         audio->settings.IIR_FILTER = false;        // 绕过 biquad IIR（旧 esp-dsp 与新版库系数约定不兼容造成静音）
         audio->settings.SPECTRUM = true;           // 使能频谱分析（evt_spectrum，新版库默认 false）
-        audio->setVolume(21);           
+        Setting::GetInstance().ApplySoftwareVolume(audio);
         audio->setPinout(I2S_BCK, I2S_WS, I2S_DOUT, I2S_MCK);
             // 创建独立任务持续调用 audio->loop() 处理网络音频流
         xTaskCreatePinnedToCore([](void *arg){
@@ -130,6 +133,8 @@ void Radio::PlayStation(size_t index) {
         if (auto dev = board.getAudioDeviceEs8311()) {
             dev->reconfigure_gpio();
         }
+        // 播放页里调过的音量只落在 Audio 的软件音量上，这里补写回 ES8311 硬件音量
+        Setting::GetInstance().FlushVolumeToHardware();
         if (guider_ui.screen_radio_list_radio) {
             lv_obj_clean(guider_ui.screen_radio_list_radio);
         }

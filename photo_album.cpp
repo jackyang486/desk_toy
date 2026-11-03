@@ -11,6 +11,12 @@
 static const char *basePath = "S:/photo";
 static lv_timer_t *carousel_timer = NULL;
 
+static bool is_standard_jfif(const uint8_t* data, size_t len) {
+    static const uint8_t sig[] = {0xFF, 0xD8, 0xFF, 0xE0, 0x00, 0x10, 0x4A, 0x46, 0x49, 0x46};
+    if (data == nullptr || len < sizeof(sig)) return false;
+    return memcmp(data, sig, sizeof(sig)) == 0;
+}
+
 Photo_album& Photo_album::GetInstance() {
     static Photo_album instance;
     return instance;
@@ -19,22 +25,18 @@ Photo_album& Photo_album::GetInstance() {
 Photo_album::Photo_album():playLocal(true),nextBtnCheck(false),current_img(0),hasInitial(false){
 }
 
-//图片显示
+//展示本地图片显示
 void Photo_album::show_image()
 {
-    if (!playLocal) {
-        display_online_image();
-        return;
-    }
     if(image_files.empty()) {
-        lv_img_set_src(guider_ui.screen_photo_view, NULL);
+        lv_image_set_src(guider_ui.screen_photo_view, NULL);
         return;
     }
     if(current_img >= image_files.size()) current_img = 0;
      // 构建完整路径
     char fullPath[256];
     lv_snprintf(fullPath, sizeof(fullPath), "%s/%s", basePath, image_files.at(current_img).c_str());
-    lv_img_set_src(guider_ui.screen_photo_view, fullPath);
+    lv_image_set_src(guider_ui.screen_photo_view, fullPath);
 }
 void Photo_album::scan_image(){
      board.scanDir(basePath,&image_files,IMG_TYPE);
@@ -54,12 +56,9 @@ void photo_win_loaded(SCREEN_LOAD_STAUS status){
             lv_obj_add_event_cb(guider_ui.screen_photo_btn_loop, Photo_album::image_loop, LV_EVENT_CLICKED,NULL);
             lv_obj_add_event_cb(guider_ui.screen_photo_btn_delete, Photo_album::img_delete, LV_EVENT_CLICKED,NULL);
             lv_obj_add_event_cb(guider_ui.screen_photo_view, Photo_album::online_img_click, LV_EVENT_LONG_PRESSED,&photo_album);
-            lv_obj_set_style_text_color(lv_obj_get_child(guider_ui.screen_photo_btn_web, 0),
-                                        photo_album.playLocal ? lv_color_white() : lv_color_make(0,0,255), 0);
-            lv_obj_set_style_text_color(lv_obj_get_child(guider_ui.screen_photo_btn_loop, 0),
-                                         carousel_timer == NULL ? lv_color_white() : lv_color_make(0,0,255), 0);
-      
         }
+        lv_obj_set_style_text_color(lv_obj_get_child(guider_ui.screen_photo_btn_web, 0),lv_color_white(),0);
+        lv_obj_set_style_text_color(lv_obj_get_child(guider_ui.screen_photo_btn_loop, 0),lv_color_white(), 0);
     }else{
         photo_album.playLocal = true;
         if(carousel_timer != NULL)
@@ -121,7 +120,7 @@ void Photo_album::lv_timer_img_carousel(lv_timer_t *timer){
       // 构建完整路径
         char fullPath[256];
         lv_snprintf(fullPath, sizeof(fullPath), "%s/%s", basePath, self->getNextImagePath().c_str());
-        lv_img_set_src(guider_ui.screen_photo_view, fullPath);
+        lv_image_set_src(guider_ui.screen_photo_view, fullPath);
     } else {
         if (!self->online_active_ || xSemaphoreTake(self->online_img_sem_, 0) != pdTRUE) return;
         self->display_online_image();
@@ -177,18 +176,29 @@ bool Photo_album::allocate_online_buf(ImgBuf_t& buf) {
 }
 
 void Photo_album::start_online() {
+    // 上一个下载任务还没退干净就再起一个，会有两个任务同时写同一对 buffer
+    if (online_task_handle_ != nullptr) {
+        show_toast(lv_scr_act(), "图片任务未结束");
+        return;
+    }
     if (!allocate_online_buf(online_buf_a_) || !allocate_online_buf(online_buf_b_)) {
         show_toast(lv_scr_act(), "内存不足");
         return;
     }
     if (online_img_sem_ == nullptr) online_img_sem_ = xSemaphoreCreateBinary();
     if (online_img_show_sem_ == nullptr) online_img_show_sem_ = xSemaphoreCreateBinary();
-    if (online_save_mutex_ == nullptr) online_save_mutex_ = xSemaphoreCreateMutex();
-    if (online_img_sem_ == nullptr || online_save_mutex_ == nullptr || online_img_show_sem_  == nullptr) {
+    if (online_img_sem_ == nullptr || online_img_show_sem_  == nullptr) {
         show_toast(lv_scr_act(), "网络图片初始化失败");
         return;
     }
     online_active_ = true;
+    online_display_pending_ = false;
+
+    // 主线程定时器：消费 online_display_pending_，把 lv_image_set_src 拉回 ui_task 执行
+    if (online_view_timer_ == nullptr) {
+        online_view_timer_ = lv_timer_create(lv_timer_online_view, 30, this);
+    }
+
     xTaskCreatePinnedToCore(
         online_download_task,
         "online_img_task",
@@ -202,14 +212,35 @@ void Photo_album::start_online() {
 
 void Photo_album::stop_online() {
     online_active_ = false;
-    if(online_img_sem_ != nullptr){
-        online_img_sem_ = nullptr;
+    online_display_pending_ = false;
+
+    if (online_view_timer_ != nullptr) {
+        lv_timer_del(online_view_timer_);
+        online_view_timer_ = nullptr;
     }
-    if(online_img_show_sem_ != nullptr){
-        online_img_show_sem_ = nullptr;
+
+    // 先把可能卡在等待里的下载任务唤醒：它要么在 take(online_img_show_sem_, portMAX_DELAY)，
+    // 要么在 take(online_img_sem_)。不唤醒就永远出不来（原来直接置 nullptr 就是这个问题）。
+    if (online_img_sem_ != nullptr) xSemaphoreGive(online_img_sem_);
+    if (online_img_show_sem_ != nullptr) xSemaphoreGive(online_img_show_sem_);
+
+    // 必须等任务真的退出：调用方紧接着会 free buffer，任务还在写就是 use-after-free
+    for (int i = 0; i < 60 && online_task_handle_ != nullptr; i++) {
+        vTaskDelay(pdMS_TO_TICKS(10));
     }
-    if(online_save_mutex_ != nullptr){
-        online_save_mutex_ = nullptr;
+
+    if (online_task_handle_ == nullptr) {
+        if (online_img_sem_ != nullptr) {
+            vSemaphoreDelete(online_img_sem_);
+            online_img_sem_ = nullptr;
+        }
+        if (online_img_show_sem_ != nullptr) {
+            vSemaphoreDelete(online_img_show_sem_);
+            online_img_show_sem_ = nullptr;
+        }
+    } else {
+        // 任务还卡在 HTTP 里（超时 10s），这时删信号量会让它踩空指针，只能先留着
+        printf("[PhotoAlbum] download task still running, semaphores kept\n");
     }
 }
 
@@ -218,13 +249,25 @@ void Photo_album::request_online_image(int32_t seed_delta) {
     online_seed_ += seed_delta;
 }
 
+// 只能在主线程（ui_task / lv_timer 回调）里调用
 void Photo_album::display_online_image() {
     if (!online_active_) return;
-    online_active_idx_ = !online_active_idx_;
     ImgBuf_t& image = (online_active_idx_ == 0) ? online_buf_a_ : online_buf_b_;
-    if (!image.valid || image.dsc.data == nullptr) return;
-    lv_img_set_src(guider_ui.screen_photo_view, &image.dsc);
+    if (!image.valid || image.dsc.data == nullptr) return;   // 无效时不要翻转索引，否则下次会写错 buffer
+    online_active_idx_ = !online_active_idx_;
+    printf("play online image\n");
+    lv_image_set_src(guider_ui.screen_photo_view, &image.dsc);
     lv_obj_invalidate(guider_ui.screen_photo_view);
+}
+
+// 下载任务只写 online_display_pending_，由这个主线程定时器消费，
+// 避免在后台任务里直接操作 LVGL 对象（竞态 / 花屏 / 偶发崩溃）。
+void Photo_album::lv_timer_online_view(lv_timer_t *timer) {
+    Photo_album* self = static_cast<Photo_album*>(lv_timer_get_user_data(timer));
+    if (self == nullptr || !self->online_active_) return;
+    if (!self->online_display_pending_) return;
+    self->online_display_pending_ = false;
+    self->display_online_image();
 }
 
 void Photo_album::online_download_task(void* pvParam) {
@@ -235,14 +278,14 @@ void Photo_album::online_download_task(void* pvParam) {
     
     while (self->online_active_) {
         ImgBuf_t& work = (self->online_active_idx_ == 0)
-            ? self->online_buf_b_ : self->online_buf_a_;
+            ? self->online_buf_a_ : self->online_buf_b_;
         if (work.jpg_buf == nullptr) continue;
         if(carousel_timer == NULL && !self->nextBtnCheck){
             vTaskDelay(pdMS_TO_TICKS(500));
             continue;
         }
         HTTPClient http;
-        String url = Setting::GetInstance().GetOnlineImageUrlBase();
+        String url = Setting::GetInstance().GetOnlineImageUrlBase()+ "&seed=" + String(self->online_seed_);
         if (http.begin(wifi_client, url)) {
             http.setFollowRedirects(HTTPC_STRICT_FOLLOW_REDIRECTS);
             http.setTimeout(10000);
@@ -268,17 +311,24 @@ void Photo_album::online_download_task(void* pvParam) {
                     }
                 }
                 if (received == static_cast<size_t>(content_length) && self->online_active_) {
-                    xSemaphoreTake(self->online_save_mutex_, portMAX_DELAY);
-                    work.jpg_len = received;
-                    work.dsc.header.cf = LV_COLOR_FORMAT_RAW;
-                    work.dsc.header.w = ONLINE_IMG_W;
-                    work.dsc.header.h = ONLINE_IMG_H;
-                    work.dsc.data = work.jpg_buf;
-                    work.dsc.data_size = received;
-                    work.valid = true;
-                    xSemaphoreGive(self->online_save_mutex_);
-                    if(carousel_timer != NULL){
-                        xSemaphoreGive(self->online_img_sem_);
+                    if (!is_standard_jfif(work.jpg_buf, received)) {
+                        printf("[PhotoAlbum] not a JFIF jpeg (head %02X %02X %02X %02X), skipped\n",
+                               work.jpg_buf[0], work.jpg_buf[1], work.jpg_buf[2], work.jpg_buf[3]);
+                        work.valid = false;
+                    } else {
+                        work.jpg_len = received;
+                        work.dsc.header.cf = LV_COLOR_FORMAT_RAW;
+                        work.dsc.header.w = ONLINE_IMG_W;
+                        work.dsc.header.h = ONLINE_IMG_H;
+                        work.dsc.data = work.jpg_buf;
+                        work.dsc.data_size = received;
+                        work.valid = true;
+                        // content_length 是 int64_t，用 %d 会读到寄存器填充槽里的垃圾值
+                        printf("[PhotoAlbum] image ready: %lld bytes\n",
+                               static_cast<long long>(content_length));
+                        if(carousel_timer != NULL){
+                            xSemaphoreGive(self->online_img_sem_);
+                        }
                     }
                 }
             } else {
@@ -287,7 +337,7 @@ void Photo_album::online_download_task(void* pvParam) {
             http.end();
         }
         if(self->nextBtnCheck){ //如果不是轮播模式
-           self->display_online_image();    
+            self->online_display_pending_ = true;
         } 
         self->nextBtnCheck = false;
         if(carousel_timer != NULL){
@@ -295,15 +345,14 @@ void Photo_album::online_download_task(void* pvParam) {
         }
         vTaskDelay(pdMS_TO_TICKS(500));
     }
-     vTaskDelete(NULL);
+    // 先清句柄再自删：stop_online() 靠这个句柄判断任务是否已经退干净
+    self->online_task_handle_ = nullptr;
+    vTaskDelete(NULL);
 }
 
 void Photo_album::save_online_image_to_sd() {
-    if (online_save_mutex_ == nullptr ||
-        xSemaphoreTake(online_save_mutex_, pdMS_TO_TICKS(500)) != pdTRUE) return;
-    ImgBuf_t& image = (online_active_idx_ == 0) ? online_buf_a_ : online_buf_b_;
+    ImgBuf_t& image = (online_active_idx_ == 0) ? online_buf_b_ : online_buf_a_;
     if (!image.valid || image.jpg_buf == nullptr || image.jpg_len == 0) {
-        xSemaphoreGive(online_save_mutex_);
         show_toast(lv_scr_act(), "图片尚未加载");
         return;
     }
@@ -311,7 +360,6 @@ void Photo_album::save_online_image_to_sd() {
     uint8_t* copy = static_cast<uint8_t*>(heap_caps_malloc(length, MALLOC_CAP_SPIRAM));
     if (copy == nullptr) copy = static_cast<uint8_t*>(malloc(length));
     if (copy != nullptr) memcpy(copy, image.jpg_buf, length);
-    xSemaphoreGive(online_save_mutex_);
     if (copy == nullptr) {
         show_toast(lv_scr_act(), "内存不足");
         return;
