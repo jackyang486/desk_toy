@@ -344,7 +344,7 @@ static void time_update_cb(lv_timer_t *t) {
     (void)t;
     // 顶栏 WiFi 状态（图标/文字）跟着这个定时器一起刷，省掉一个常驻 LVGL 定时器
     wifi_head_ui_update();
-    if (!(lv_screen_active() == guider_ui.screen_game) && !(lv_screen_active() == guider_ui.screen_robot)){
+    if (!(lv_screen_active() == guider_ui.screen_game) && !(lv_screen_active() == guider_ui.screen_robot) && !(lv_screen_active() == guider_ui.screen_music)){
         // NTP 还没同步成功时不刷新，避免顶栏先闪一个 1970 的开机秒数
         if (!ntp_time_ready) return;
         time_t n = now();

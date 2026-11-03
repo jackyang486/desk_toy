@@ -221,20 +221,6 @@ static void screen_music_player_event_handler (lv_event_t *e)
     }
 }
 
-static void screen_music_rnd_img_event_handler (lv_event_t *e)
-{
-    lv_event_code_t code = lv_event_get_code(e);
-    switch (code) {
-    case LV_EVENT_CLICKED:
-    {
-        music_random();
-        break;
-    }
-    default:
-        break;
-    }
-}
-
 static void screen_music_next_img_event_handler (lv_event_t *e)
 {
     lv_event_code_t code = lv_event_get_code(e);
@@ -242,20 +228,6 @@ static void screen_music_next_img_event_handler (lv_event_t *e)
     case LV_EVENT_CLICKED:
     {
         music_next();
-        break;
-    }
-    default:
-        break;
-    }
-}
-
-static void screen_music_pre_img_event_handler (lv_event_t *e)
-{
-    lv_event_code_t code = lv_event_get_code(e);
-    switch (code) {
-    case LV_EVENT_CLICKED:
-    {
-        music_prev();
         break;
     }
     default:
@@ -272,20 +244,6 @@ static void screen_music_pause_img_event_handler (lv_event_t *e)
         music_play();
         lv_obj_remove_flag(guider_ui.screen_music_playing_img, LV_OBJ_FLAG_HIDDEN);
         lv_obj_add_flag(guider_ui.screen_music_pause_img, LV_OBJ_FLAG_HIDDEN);
-        break;
-    }
-    default:
-        break;
-    }
-}
-
-static void screen_music_loop_img_event_handler (lv_event_t *e)
-{
-    lv_event_code_t code = lv_event_get_code(e);
-    switch (code) {
-    case LV_EVENT_CLICKED:
-    {
-        music_sequence();
         break;
     }
     default:
@@ -326,6 +284,50 @@ static void screen_music_btn_list_event_handler (lv_event_t *e)
     }
 }
 
+static void screen_music_btn_loop_event_handler (lv_event_t *e)
+{
+    lv_event_code_t code = lv_event_get_code(e);
+    switch (code) {
+    case LV_EVENT_CLICKED:
+    {
+        lv_obj_clear_state(guider_ui.screen_music_btn_rnd, LV_STATE_CHECKED);
+        music_sequence();
+        break;
+    }
+    default:
+        break;
+    }
+}
+
+static void screen_music_btn_rnd_event_handler (lv_event_t *e)
+{
+    lv_event_code_t code = lv_event_get_code(e);
+    switch (code) {
+    case LV_EVENT_CLICKED:
+    {
+        lv_obj_clear_state(guider_ui.screen_music_btn_loop, LV_STATE_CHECKED);
+        music_random();
+        break;
+    }
+    default:
+        break;
+    }
+}
+
+static void screen_music_img_pre_event_handler (lv_event_t *e)
+{
+    lv_event_code_t code = lv_event_get_code(e);
+    switch (code) {
+    case LV_EVENT_CLICKED:
+    {
+        music_prev();
+        break;
+    }
+    default:
+        break;
+    }
+}
+
 static void screen_music_btn_music_event_handler (lv_event_t *e)
 {
     lv_event_code_t code = lv_event_get_code(e);
@@ -347,13 +349,13 @@ void events_init_screen_music (lv_ui *ui)
 {
     lv_obj_add_event_cb(ui->screen_music, screen_music_event_handler, LV_EVENT_ALL, ui);
     lv_obj_add_event_cb(ui->screen_music_player, screen_music_player_event_handler, LV_EVENT_ALL, ui);
-    lv_obj_add_event_cb(ui->screen_music_rnd_img, screen_music_rnd_img_event_handler, LV_EVENT_ALL, ui);
     lv_obj_add_event_cb(ui->screen_music_next_img, screen_music_next_img_event_handler, LV_EVENT_ALL, ui);
-    lv_obj_add_event_cb(ui->screen_music_pre_img, screen_music_pre_img_event_handler, LV_EVENT_ALL, ui);
     lv_obj_add_event_cb(ui->screen_music_pause_img, screen_music_pause_img_event_handler, LV_EVENT_ALL, ui);
-    lv_obj_add_event_cb(ui->screen_music_loop_img, screen_music_loop_img_event_handler, LV_EVENT_ALL, ui);
     lv_obj_add_event_cb(ui->screen_music_playing_img, screen_music_playing_img_event_handler, LV_EVENT_ALL, ui);
     lv_obj_add_event_cb(ui->screen_music_btn_list, screen_music_btn_list_event_handler, LV_EVENT_ALL, ui);
+    lv_obj_add_event_cb(ui->screen_music_btn_loop, screen_music_btn_loop_event_handler, LV_EVENT_ALL, ui);
+    lv_obj_add_event_cb(ui->screen_music_btn_rnd, screen_music_btn_rnd_event_handler, LV_EVENT_ALL, ui);
+    lv_obj_add_event_cb(ui->screen_music_img_pre, screen_music_img_pre_event_handler, LV_EVENT_ALL, ui);
     lv_obj_add_event_cb(ui->screen_music_btn_music, screen_music_btn_music_event_handler, LV_EVENT_ALL, ui);
 }
 
