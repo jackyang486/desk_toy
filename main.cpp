@@ -198,9 +198,15 @@ void my_disp_flush(lv_display_t *disp, const lv_area_t *area, uint8_t *color_p)
 void my_touchpad_read(lv_indev_t *indev_driver, lv_indev_data_t *data)
 {
     (void)indev_driver;
-    tp = ft6336u.scan(); 
+    tp = ft6336u.scan();
     /* 判断屏幕是否被按下 */
-    bool touched = tp.touch_count;
+    // 防幽灵点击：坐标必须在屏幕范围内才有效。
+    // I2C 抖动时 FT6336U 可能给出垃圾数据，坐标常为 (0,0)——正好落在顶栏
+    // pageHeadCont 内，一次 press+release 就会误触发顶栏点击事件。
+    bool touched = tp.touch_count > 0
+                   && tp.tp[0].status != release
+                   && tp.tp[0].x < 240
+                   && tp.tp[0].y < 320;
     if (touched) {
         data->state = LV_INDEV_STATE_PR;
         data->point.x = tp.tp[0].x;

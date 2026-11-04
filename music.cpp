@@ -21,38 +21,16 @@
 #define I2S_DOUT  8
 #define I2S_WS    7
 
-// ---------------- 频谱显示（暂时关闭） ----------------
-// 小段代码用 "//S" 注释，整段函数用 #if 0 / #endif 包裹；
-// 需要恢复时删掉 "//S"、把 #if 0 改成 #if 1 即可。
-// 涉及：宏与状态数组、evt_spectrum 回调、init_spectrum()/deinit_spectrum()/update_spectrum()，
-//      以及 music_loop() 与 LVGL 定时器里的调用，和 audio->settings.SPECTRUM。
-//S #define SPECTRUM_BARS 25   // 显示柱数量
-//S #define SPECTRUM_SRC_BANDS 15 // evt_spectrum 提供的源频段数（库内 NUM_BANDS）
-//S #define SPECTRUM_MAX_HEIGHT 60
-//S #define SPECTRUM_BAR_WIDTH 7
-//S #define SPECTRUM_BAR_GAP 1
-//S #define SPECTRUM_PADDING 20
-//S #define SPECTRUM_RIGHT_PADDING 30
-//S #define SPECTRUM_START_Y 230
-//S static lv_obj_t *spectrum_bars[SPECTRUM_BARS];
-//S static lv_obj_t *spectrum_peaks[SPECTRUM_BARS];
-//S static uint8_t spectrum_heights[SPECTRUM_BARS];
-//S static uint8_t spectrum_target_heights[SPECTRUM_BARS];
-//S static uint8_t spectrum_peak_heights[SPECTRUM_BARS];
-//S static bool spectrum_init = false;
 void check_list_item(uint16_t idx, bool check);
 #define LIST_VISIBLE_ITEMS 30 
 #define LIST_ITEM_HEIGHT 35    // 与 fill_music_list_panel() 里 lv_obj_set_height(btn, 35) 保持一致
 static bool list_is_touching = false;
 static int32_t list_scroll_start_y = 0;   // 手势开始时的滚动位置，用于算"实际滚过了几条"
 static bool list_swipe_registered = false;
-// list 自身的滑动回调是否注册过。lv_obj_clean() 只删子对象，不会移除 list 本身的回调，
-// 所以这个标志一旦置位就不再清零，避免每次进页面重复 add 一份。
 static bool list_cb_registered = false;
-// [v4.0.0 适配] 新版 ESP32-audioI2S 移除了 getVUlevel()/audio_eof_mp3()/audio_id3image()/audio_id3lyrics()，
-// 统一改由 audio_info_callback() 上抛事件。回调在音频任务（Core 1）里执行，这里用 volatile 全局变量
-// 暂存数据/标志，再交给 LVGL 定时器（主线程）统一处理，保证线程安全。
 static volatile bool g_eof_pending = false;   // 播放结束，待切下一曲
+static uint32_t      g_play_start_ms = 0;     // 本次 connecttoFS 的时刻，用于识别"刚切歌就来的旧 EOF"
+static uint32_t      g_last_curr_sec = 0;     // 定时器最近一次读到的播放位置（库在抛 EOF 前会把它清零）
 static char          g_cur_file_path[128] = {0}; // 当前播放文件路径（相对 SD_MMC 挂载点）
 static const char *basePath = "S:/music";
 
@@ -60,13 +38,7 @@ static const char *basePath = "S:/music";
 // 库的 evt_lyrics 解析 UTF-8 编码的 SYLT 有 off-by-one（时间戳全错），evt_image 只给偏移不读数据，
 // 所以这里用 id3_parser 自己解析：歌词按播放进度显示，封面取 APIC 数据自己缩小解码后显示。
 #define COVER_BOX_SIZE 180        // 与 setup_scr_screen_music.c 里 screen_music_album_img 的尺寸保持一致
-#define COVER_BOX_X 30            // 水平居中：(240 - 180) / 2
-#define COVER_BOX_Y 54            // 上边贴着歌名 label，下边压到播放按钮上方
-#define COVER_DEFAULT_SIZE 100    // 默认封面资源 _cover_2_RGB565A8_180x180 的尺寸
 static id3::Tag  g_id3;              // 当前歌曲的标签
-// 歌词/歌名都复用界面文件里已经固定好位置的 label，不再运行时新建：
-//   歌词 → guider_ui.screen_music_label_music_name（封面下方一行，setup 里已是 LONG_SCROLL）
-//   歌名 → page_head.time_label（顶栏，音乐页里改作"歌手 - 歌名"滚动条，不显示时钟）
 static int32_t   g_lyric_index = -2; // 当前显示的歌词行下标（-2 表示还没写过文本）
 
 // 封面：LVGL 的内存池只有 128KB，直接让它解码 500x500 的 jpg 要整张解码图 + 缩放变换，必然失败。
@@ -114,10 +86,6 @@ static int cover_draw_cb(JPEGDRAW *draw) {
 static void cover_reset(void) {
     lv_obj_t *img = guider_ui.screen_music_album_img;
     if (img != NULL) {
-        // 默认封面资源只有 100x100，控件缩回原尺寸并居中，避免缩放带来的偏移
-        lv_obj_set_pos(img, COVER_BOX_X + (COVER_BOX_SIZE - COVER_DEFAULT_SIZE) / 2,
-                            COVER_BOX_Y + (COVER_BOX_SIZE - COVER_DEFAULT_SIZE) / 2);
-        lv_obj_set_size(img, COVER_DEFAULT_SIZE, COVER_DEFAULT_SIZE);
         lv_image_set_src(img, &_cover_2_RGB565A8_180x180);
         lv_image_set_pivot(img, 50, 50);
         lv_image_set_scale(img, LV_SCALE_NONE);
@@ -146,12 +114,17 @@ static void cover_show(void) {
 
     uint8_t *jpg = (uint8_t *)heap_caps_malloc(g_id3.cover.length, MALLOC_CAP_SPIRAM);
     if (jpg == NULL) jpg = (uint8_t *)malloc(g_id3.cover.length);
-    if (jpg == NULL) return;
+    if (jpg == NULL) {
+        printf("[cover] alloc %lu fail\n", (unsigned long)g_id3.cover.length);
+        return;
+    }
 
     File f = SD_MMC.open(g_cur_file_path);
     const size_t jpg_len = f ? id3::read_cover(f, g_id3, jpg, g_id3.cover.length) : 0;
     if (f) f.close();
     if (jpg_len != g_id3.cover.length) {
+        printf("[cover] read %u != %u（文件可能被截断/损坏）\n",
+               (unsigned)jpg_len, (unsigned)g_id3.cover.length);
         free(jpg);
         return;
     }
@@ -161,12 +134,14 @@ static void cover_show(void) {
         void *mem = heap_caps_malloc(sizeof(JPEGDEC), MALLOC_CAP_SPIRAM);
         if (mem == NULL) mem = malloc(sizeof(JPEGDEC));
         if (mem == NULL) {
+            printf("[cover] jpeg ctx alloc fail\n");
             free(jpg);
             return;
         }
         g_jpeg_ctx = new (mem) JPEGDEC();
     }
     if (!g_jpeg_ctx->openRAM(jpg, (int)jpg_len, cover_draw_cb)) {
+        printf("[cover] openRAM fail (%u bytes)\n", (unsigned)jpg_len);
         free(jpg);
         return;
     }
@@ -196,6 +171,7 @@ static void cover_show(void) {
     g_cover_decoded = (uint16_t *)heap_caps_malloc(dec_bytes, MALLOC_CAP_SPIRAM);
     if (g_cover_decoded == NULL) g_cover_decoded = (uint16_t *)malloc(dec_bytes);
     if (g_cover_decoded == NULL) {
+        printf("[cover] decode buf alloc %u fail\n", (unsigned)dec_bytes);
         g_cover_dec_w = 0;
         g_cover_dec_h = 0;
         g_jpeg_ctx->close();
@@ -208,6 +184,7 @@ static void cover_show(void) {
     g_jpeg_ctx->close();
     free(jpg);
     if (!decoded) {
+        printf("[cover] jpeg decode fail\n");
         cover_free_decoded();
         return;
     }
@@ -240,7 +217,6 @@ static void cover_show(void) {
     g_cover_dsc.data_size = COVER_BOX_SIZE * COVER_BOX_SIZE * 2;
     g_cover_dsc.data = (const uint8_t *)g_cover_pixels;
 
-    lv_obj_set_pos(img, COVER_BOX_X, COVER_BOX_Y);
     lv_obj_set_size(img, COVER_BOX_SIZE, COVER_BOX_SIZE);
     lv_image_set_scale(img, LV_SCALE_NONE);   // 源就是 180x180，不需要缩放
     lv_image_set_src(img, &g_cover_dsc);
@@ -270,12 +246,20 @@ static void load_id3_info(const char *full_path) {
 
     if (!g_id3.title.isEmpty()) {
         String name = g_id3.artist.isEmpty() ? g_id3.title : (g_id3.artist + " - " + g_id3.title);
-        lv_label_set_text(guider_ui.screen_music_label_music_name, name.c_str());
+        if (guider_ui.screen_music_label_title != NULL) lv_label_set_text(guider_ui.screen_music_label_title, name.c_str());   // 歌名进顶栏
     }
-    printf("[id3] title=%s artist=%s cover=%lu@%lu lyrics=%u\n",
+    printf("[id3] title=%s artist=%s cover=%lu@%lu lyrics=%u plain=%u\n",
            g_id3.title.c_str(), g_id3.artist.c_str(),
            (unsigned long)g_id3.cover.length, (unsigned long)g_id3.cover.offset,
-           (unsigned)g_id3.lyrics.size());
+           (unsigned)g_id3.lyrics.size(), (unsigned)g_id3.plain_lyrics.length());
+    if (g_id3.has_lyrics()) {
+        printf("[id3] lyric first=%ums last=%ums \"%s\"\n",
+               (unsigned)g_id3.lyrics.front().time_ms,
+               (unsigned)g_id3.lyrics.back().time_ms,
+               g_id3.lyrics.front().text.c_str());
+    } else {
+        printf("[id3] 没解析到同步歌词（若 plain>0 说明只有无时间轴歌词）\n");
+    }
 
     cover_show();
     if (guider_ui.screen_music_label_music_name != NULL && g_id3.has_lyrics()) lv_obj_clear_flag(guider_ui.screen_music_label_music_name, LV_OBJ_FLAG_HIDDEN);
@@ -321,136 +305,14 @@ void on_audio_info(Audio::msg_t msg) {
     }
 }
 
-#if 0   // ---- 频谱已关闭：init_spectrum / deinit_spectrum ----
-void init_spectrum(void) {
-    if (spectrum_init) return;
-    int total_width = SPECTRUM_BARS * (SPECTRUM_BAR_WIDTH + SPECTRUM_BAR_GAP) - SPECTRUM_BAR_GAP;
-    int start_x = (240 - total_width - SPECTRUM_RIGHT_PADDING);
-    int start_y = SPECTRUM_START_Y;
-    for (int i = 0; i < SPECTRUM_BARS; i++) {
-        spectrum_bars[i] = lv_obj_create(guider_ui.screen_music_player);
-        lv_obj_set_size(spectrum_bars[i], SPECTRUM_BAR_WIDTH, 0);
-        lv_obj_set_pos(spectrum_bars[i], start_x + i * (SPECTRUM_BAR_WIDTH + SPECTRUM_BAR_GAP), start_y);
-        spectrum_peaks[i] = lv_obj_create(guider_ui.screen_music_player);
-        lv_obj_set_size(spectrum_peaks[i], SPECTRUM_BAR_WIDTH, 2);
-        lv_obj_set_pos(spectrum_peaks[i], start_x + i * (SPECTRUM_BAR_WIDTH + SPECTRUM_BAR_GAP), start_y - 2);
-        lv_obj_set_style_bg_color(spectrum_peaks[i], lv_color_hex(0xFFFFFF), LV_PART_MAIN | LV_STATE_DEFAULT);
-        lv_obj_set_style_radius(spectrum_peaks[i], 1, LV_PART_MAIN | LV_STATE_DEFAULT);
-        lv_obj_set_style_border_width(spectrum_peaks[i], 0, LV_PART_MAIN | LV_STATE_DEFAULT);
-        lv_obj_set_style_radius(spectrum_bars[i], 0, LV_PART_MAIN | LV_STATE_DEFAULT);
-        lv_obj_set_style_border_width(spectrum_bars[i], 0, LV_PART_MAIN | LV_STATE_DEFAULT);
-        spectrum_heights[i] = 0;
-        spectrum_target_heights[i] = 0;
-        spectrum_peak_heights[i] = 0;
-    }
-    spectrum_init = true;
-}
-
-void deinit_spectrum(void) {
-    if (!spectrum_init) return;
-    for (int i = 0; i < SPECTRUM_BARS; i++) {
-        if (spectrum_bars[i]) {
-            lv_obj_delete(spectrum_bars[i]);
-            spectrum_bars[i] = NULL;
-        }
-        if (spectrum_peaks[i]) {
-            lv_obj_delete(spectrum_peaks[i]);
-            spectrum_peaks[i] = NULL;
-        }
-    }
-    spectrum_init = false;
-}
-#endif  // ---- 频谱关闭结束 ----
-
-
-
 int getRandomInt(int min, int max);
-
-#if 0   // ---- 频谱已关闭：update_spectrum ----
-void update_spectrum(void) {
-    if (!spectrum_init) return;          // 频谱已释放，直接返回（原逻辑仍会访问已置 NULL 的 spectrum_bars[]）
-    if (!audio || !audio->isRunning()) { // 衰减
-        for (int i = 0; i < SPECTRUM_BARS; i++) {
-            if (spectrum_heights[i] > 0) {
-                spectrum_heights[i] -= (spectrum_heights[i] > 4) ? 4 : 1;
-                if (spectrum_bars[i]) {
-                    lv_obj_set_height(spectrum_bars[i], spectrum_heights[i]);
-                    lv_obj_set_y(spectrum_bars[i], SPECTRUM_START_Y - spectrum_heights[i]);
-                }
-            }
-            if (spectrum_peak_heights[i] > spectrum_heights[i]) spectrum_peak_heights[i]--;
-            if (spectrum_peak_heights[i] < spectrum_heights[i]) spectrum_peak_heights[i] = spectrum_heights[i];
-            if (spectrum_peaks[i]) {
-                lv_obj_set_y(spectrum_peaks[i], SPECTRUM_START_Y - spectrum_peak_heights[i] - 2);
-                lv_obj_set_style_bg_opa(spectrum_peaks[i], spectrum_peak_heights[i] > 0 ? 255 : 0, LV_PART_MAIN | LV_STATE_DEFAULT);
-            }
-        }
-        return;
-    }
-    // spectrum_target_heights[] 已由 evt_spectrum 回调填充（真实 FFT 频段），此处只做爬升/回落平滑
-    for (int i = 0; i < SPECTRUM_BARS; i++) {
-        int diff = (int)spectrum_target_heights[i] - (int)spectrum_heights[i];
-        if (diff > 0) {
-            spectrum_heights[i] += (diff > 6) ? 6 : diff;
-        } else if (diff < 0) {
-            int drop_amount = (-diff > 5) ? 5 : -diff;
-            spectrum_heights[i] -= drop_amount;
-            if (spectrum_heights[i] > SPECTRUM_MAX_HEIGHT) {
-                spectrum_heights[i] = 0;
-            }
-        }
-        if (spectrum_bars[i]) {
-            if (spectrum_heights[i] > spectrum_peak_heights[i]) {
-                spectrum_peak_heights[i] = spectrum_heights[i];
-            } else if (spectrum_peak_heights[i] > spectrum_heights[i]) {
-                spectrum_peak_heights[i]--;
-            }
-            lv_obj_set_height(spectrum_bars[i], spectrum_heights[i]);
-            lv_obj_set_y(spectrum_bars[i], SPECTRUM_START_Y - spectrum_heights[i]);
-            uint8_t phase = (uint8_t)((uint16_t)i * 255 / (SPECTRUM_BARS - 1));
-            static const uint8_t spectrum_palette[][3] = {
-                {255, 82, 48},   // coral
-                {255, 137, 35},  // orange
-                {255, 190, 45},  // amber
-                {245, 78, 77},   // rose
-                {214, 63, 126}   // warm pink
-            };
-            uint8_t palette_pos = phase == 255 ? 3 : (uint8_t)((uint16_t)phase * 4 / 255);
-            uint8_t palette_frac = phase == 255 ? 255 : (uint8_t)((uint16_t)(phase % 64) * 255 / 64);
-            uint8_t red = spectrum_palette[palette_pos][0]
-                + (int16_t)(spectrum_palette[palette_pos + 1][0] - spectrum_palette[palette_pos][0]) * palette_frac / 255;
-            uint8_t green = spectrum_palette[palette_pos][1]
-                + (int16_t)(spectrum_palette[palette_pos + 1][1] - spectrum_palette[palette_pos][1]) * palette_frac / 255;
-            uint8_t blue = spectrum_palette[palette_pos][2]
-                + (int16_t)(spectrum_palette[palette_pos + 1][2] - spectrum_palette[palette_pos][2]) * palette_frac / 255;
-            uint8_t boost = spectrum_heights[i] * 25 / SPECTRUM_MAX_HEIGHT;
-            uint8_t bright_red = red > 255 - boost ? 255 : red + boost;
-            uint8_t bright_green = green > 255 - boost ? 255 : green + boost;
-            uint8_t bright_blue = blue > 255 - boost ? 255 : blue + boost;
-            lv_obj_set_style_bg_color(spectrum_bars[i], lv_color_make(bright_red, bright_green, bright_blue), LV_PART_MAIN | LV_STATE_DEFAULT);
-            lv_obj_set_style_bg_opa(spectrum_bars[i], 255, LV_PART_MAIN | LV_STATE_DEFAULT);
-            if (spectrum_peaks[i]) {
-                lv_obj_set_y(spectrum_peaks[i], SPECTRUM_START_Y - spectrum_peak_heights[i] - 2);
-                lv_obj_set_style_bg_color(spectrum_peaks[i], lv_color_make(255, 0, 0), LV_PART_MAIN | LV_STATE_DEFAULT);
-                lv_obj_set_style_bg_opa(spectrum_peaks[i], spectrum_peak_heights[i] > 0 ? 255 : 0, LV_PART_MAIN | LV_STATE_DEFAULT);
-            }
-        }
-    }
-}
-#endif  // ---- 频谱关闭结束 ----
 
 Music_player music_player;
 static lv_anim_t album_anim;
 uint32_t total_sec = 1;
 static bool music_screen_load = false;
 static lv_timer_t *music_timer = NULL;  // 静态，只在本文件可见
-// 音频喂数据任务句柄。注意 xTaskCreate* 的栈深度单位是 word：
-// 原来 1024*20 = 80KB，且动态任务的 TCB+栈优先从 internal DRAM 分配，
-// 这正是退出音乐页后 main.cpp 里 "Largest INTERNAL free block" 掉 ~40K 的主因。
-// 24KB 是实测够用的值：internal DRAM 碎片化后最大连续块常见只有 30~45KB，
-// 32KB 的栈已经处在"随时可能创建失败"的边缘，降到 24KB 能显著降低失败概率。
-// 实际用量看串口的 "[music] task exit, stack free=" 打印，再往下调。
-#define MUSIC_TASK_STACK_WORDS  (1024 * 10)
+#define MUSIC_TASK_STACK_WORDS  (1024 * 6)
 static TaskHandle_t music_back_task_handle = NULL;
 
 //音乐播放上一曲
@@ -483,11 +345,14 @@ void Music_player::play_music()
     strncpy(g_cur_file_path, fullPath, sizeof(g_cur_file_path) - 1);
     g_cur_file_path[sizeof(g_cur_file_path) - 1] = '\0';
     // 先用文件名占位；解析到 ID3 后再换成"歌手 - 歌名"
-    lv_label_set_text(page_head.time_label,musicFile.c_str()); 
+    lv_label_set_text(guider_ui.screen_music_label_title,musicFile.c_str());
+    audio->stopSong();   // 必须先停歌再解析：SDMMC 不支持并发事务，音频任务还在读卡时解析 ID3 会读到坏数据（症状：封面在、歌词丢）
     load_id3_info(g_cur_file_path);   // 解析标签：歌名 / 专辑封面 / 同步歌词
     lv_slider_set_value(guider_ui.screen_music_slider, 0, LV_ANIM_OFF); //切歌时，滑块归0
     check_list_item(current_music,true);
-    audio->stopSong();
+    g_eof_pending = false;              // 清掉可能残留的旧 EOF 事件，避免刚开播就被切走
+    g_last_curr_sec = 0;
+    g_play_start_ms = millis();
     audio->connecttoFS(SD_MMC, fullPath);
 }
 // 生成 [min, max] 范围内的随机整数（闭区间）
@@ -503,9 +368,10 @@ static void handle_eof_next() {
     if (music_player.getPlaySequence()) {
         music_player.music_right_btn();
     } else {
-        int rndNum = getRandomInt(0, music_player.getMusicFilesSize() - 1);
-        music_player.setCurrentMusic(rndNum);
-        music_player.music_right_btn();
+        // 随机播放：直接播放随机到的曲目。
+        // 原来这里又调了一次 music_right_btn()，会把 current_music 再 +1，实际播的不是随机的那首。
+        music_player.setCurrentMusic(getRandomInt(0, music_player.getMusicFilesSize() - 1));
+        music_player.play_music();
     }
 }
 
@@ -514,7 +380,7 @@ void music_random(){
     music_player.setPlaySequence(false);
     int rndNum = getRandomInt(0,music_player.getMusicFilesSize()-1);
     music_player.setCurrentMusic(rndNum);
-    music_player.music_right_btn(); 
+    music_player.play_music();   // 直接播随机到的那首（原 music_right_btn() 会多 +1）
 }
 //音乐顺序播放
 void music_sequence(){
@@ -560,6 +426,7 @@ static void lv_timer_refresh_time(lv_timer_t *timer)
          lv_slider_set_range(guider_ui.screen_music_slider, 0, total_sec);
        }
         uint32_t curr = audio->getAudioCurrentTime();
+        g_last_curr_sec = curr;   // 供 EOF 处理判断"是否真的放完"
         char buf[32];
         sprintf(buf, "%02d:%02d / %02d:%02d", 
             curr / 60, curr % 60, 
@@ -569,12 +436,25 @@ static void lv_timer_refresh_time(lv_timer_t *timer)
         lv_slider_set_value(guider_ui.screen_music_slider, curr, LV_ANIM_OFF);
         lyric_update(curr);
     }
-    //S update_spectrum();   // 频谱已关闭
-
     // 处理音频任务上抛的跨线程事件（EOF 切歌）
     if (g_eof_pending) {
         g_eof_pending = false;
-        handle_eof_next();
+        // 库在抛 evt_eof 前已经把当前时间清零，这里用定时器最后一次读到的位置判断"是否放完"
+        const uint32_t elapsed_ms = millis() - g_play_start_ms;
+        if (elapsed_ms < 1000) {
+            // 刚开播就来 EOF：这是上一首歌遗留的陈旧事件（比如手动切歌与上一曲结束撞在一起），
+            // 不能跟着切，否则会出现"刚播就跳下一首"
+            printf("[eof] 丢弃陈旧 EOF：本曲仅播放 %lu ms\n", (unsigned long)elapsed_ms);
+        } else {
+            printf("[eof] 切歌：已播 %lu s / 总时长 %u s（%lu ms）\n",
+                   (unsigned long)g_last_curr_sec, (unsigned)total_sec, (unsigned long)elapsed_ms);
+            if (total_sec > 10 && g_last_curr_sec + 5 < total_sec) {
+                // 明显没放完就收到 EOF，说明库算出的音频数据长度偏小（ID3 标签解析/文件损坏）
+                printf("[eof] !! 提前结束：差 %u s，检查该文件的 ID3 标签与文件完整性\n",
+                       (unsigned)(total_sec - g_last_curr_sec));
+            }
+            handle_eof_next();
+        }
     }
 }
 
@@ -776,6 +656,7 @@ void music_list_swipe_event_handler(lv_event_t *e) {
 //循环播放
 void Music_player::music_loop(SCREEN_LOAD_STAUS playerLoadStatus){
     if(playerLoadStatus == LOADED){
+        lv_obj_add_flag(page_head.time_label,LV_OBJ_FLAG_HIDDEN);
         if (audio != nullptr) return;   // 重入保护：重复 LOADED 会覆盖 audio 指针，导致 PSRAM 与 I2S 通道泄漏
         g_eof_pending = false;          // 清掉上一轮遗留的切歌标志
         list_start_index = 0;           // 列表回到首页，避免与上次退出时的滑动位置错位
@@ -790,7 +671,7 @@ void Music_player::music_loop(SCREEN_LOAD_STAUS playerLoadStatus){
         fill_music_list_panel();        // 内部依据 list_swipe_registered 决定重建还是复用
         list_swipe_registered = true;
         lv_obj_set_style_text_font(guider_ui.screen_music_label_music_name, &font_puhui_16_4, LV_PART_MAIN|LV_STATE_DEFAULT); 
-        //S init_spectrum();            // 频谱已关闭
+        lv_obj_set_style_text_font(guider_ui.screen_music_label_title, &font_puhui_16_4, LV_PART_MAIN|LV_STATE_DEFAULT); 
         cover_reset();                  // 默认封面资源是 100x100，先缩回原尺寸居中显示
         if (music_timer == NULL) {
             music_timer = lv_timer_create(lv_timer_refresh_time, 50, NULL);
@@ -825,6 +706,7 @@ void Music_player::music_loop(SCREEN_LOAD_STAUS playerLoadStatus){
             vTaskDelay(pdMS_TO_TICKS(200));
             play_music();
     }else{
+        lv_obj_clear_flag(page_head.time_label,LV_OBJ_FLAG_HIDDEN);
         playEnable = false;
         // 1) 先停掉 LVGL 定时器（内部会访问 audio->），避免后续销毁过程中再被触发
         if (music_timer != NULL) {
@@ -832,7 +714,6 @@ void Music_player::music_loop(SCREEN_LOAD_STAUS playerLoadStatus){
             music_timer = NULL;
         }
         vTaskDelay(pdMS_TO_TICKS(500));
-        //S deinit_spectrum();          // 频谱已关闭
         cover_release();                // 恢复默认封面并释放封面缓冲
         g_id3.clear();
         // 3) 销毁 Audio 对象：析构函数 stopSong + disable/del I2S_NUM_0 通道 + stopAudioTask + 释放互斥锁
@@ -842,12 +723,6 @@ void Music_player::music_loop(SCREEN_LOAD_STAUS playerLoadStatus){
             delete audio;
             audio = nullptr;
         }
-        // 让渡引脚前先记录堆状态：reconfigure_gpio() 会重新 enable I2S 通道并申请
-        // DMA 缓冲（cap DMA 只能落内部 SRAM），那之后测会把这笔常驻开销算进"碎片"。
-        // 想看"不含 I2S 复用开销"的真实底数，就看这一行。
-        printf("[music exit] free=%lu largest=%lu\n",
-               (unsigned long)heap_caps_get_free_size(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT),
-               (unsigned long)heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT));
         // 把 codec 的 I2S 引脚让渡回 AI_VOX(I2S_NUM_1)，保证退出后通知音/语音可用
         if (auto dev = board.getAudioDeviceEs8311()) {
             dev->reconfigure_gpio();

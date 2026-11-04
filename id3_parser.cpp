@@ -398,8 +398,12 @@ bool parse(File &file, Tag &tag) {
 bool parse_file(fs::FS &fs, const char *path, Tag &tag) {
     tag.clear();
     File f = fs.open(path, FILE_READ);
-    if (!f) return false;
+    if (!f) {
+        printf("[id3] open fail: %s\n", path);
+        return false;
+    }
     const bool ok = parse(f, tag);
+    if (!ok) printf("[id3] no ID3v2 header: %s\n", path);
     f.close();
     return ok;
 }

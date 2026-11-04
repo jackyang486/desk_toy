@@ -104,6 +104,7 @@ lv_obj_t *screen_weather;
 	lv_obj_t *screen_music_list_music_item0;
 	lv_obj_t *screen_music_btn_music;
 	lv_obj_t *screen_music_btn_music_label;
+	lv_obj_t *screen_music_label_title;
 	lv_obj_t *screen_robot;
 	bool screen_robot_del;
 	lv_obj_t *screen_robot_cont_msg;

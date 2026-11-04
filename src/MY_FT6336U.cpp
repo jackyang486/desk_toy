@@ -254,31 +254,80 @@ uint8_t FT6336U::read_state(void) {
 }
 
 FT6336U_TouchPointType FT6336U::scan(void){
-    touchPoint.touch_count = read_td_status();
-
-    if(touchPoint.touch_count == 0) {
+    // 一次性把 0x02~0x0C（TD_STATUS + 两个触点的坐标块）整段读回来。
+    //
+    // 原来每个字段单独发起一次 I2C 事务，一旦总线抖动就会拼出"触点数=垃圾值、
+    // 坐标=0"的混合数据：坐标 (0,0) 正好落在顶栏 pageHeadCont 上，
+    // 于是一次 press+release 就误触发了顶栏点击；随机坐标还可能点到"下一曲"按钮，
+    // 表现为歌放到一半突然切歌。整块读 + 严格校验可以消除这种不一致。
+    uint8_t buf[11];
+    if (!readBlock(FT6336U_ADDR_TD_STATUS, buf, sizeof(buf))) {
+        // 读失败时不要编造数据（原来 readByte 失败返回 0，会被当成坐标 0）
+        touchPoint.touch_count = 0;
         touchPoint.tp[0].status = release;
         touchPoint.tp[1].status = release;
+        return touchPoint;
     }
-    else if(touchPoint.touch_count == 1) {
-        uint8_t id1 = read_touch1_id();
-        touchPoint.tp[id1].status = (touchPoint.tp[id1].status == release) ? touch : stream;
-        touchPoint.tp[id1].x = read_touch1_x();
-        touchPoint.tp[id1].y = read_touch1_y();
-        touchPoint.tp[~id1 & 0x01].status = release;
+
+    // TD_STATUS: bit7:4 恒为 0，bit3:0 为触点数(<=2)
+    const uint8_t td = buf[0];
+    uint8_t cnt = td & 0x0F;
+    if ((td & 0xF0) != 0 || cnt > 2) cnt = 0;
+
+    // 0x03 P1_XH: bit7:6 事件(0=DOWN 1=UP 2=MOVE 3=保留)，bit5:4 ID，bit3:0 X[11:8]
+    // 0x05 P1_YH: bit7:4 ID，bit3:0 Y[11:8]
+    // 0x09 P2_XH / 0x0B P2_YH 同理
+    const uint8_t ev1 = buf[1] >> 6;
+    const uint8_t id1 = buf[3] >> 4;
+    const uint8_t ev2 = buf[7] >> 6;
+    const uint8_t id2 = buf[9] >> 4;
+
+    // 交叉校验：点数说有触点，但事件位为"保留(3)"或 ID 非法，说明数据是坏的
+    if (cnt >= 1 && (ev1 == 3 || id1 > 1)) cnt = 0;
+    if (cnt == 2 && (ev2 == 3 || id2 > 1 || id2 == id1)) cnt = 1;
+
+    touchPoint.touch_count = cnt;
+
+    if (cnt == 0) {
+        touchPoint.tp[0].status = release;
+        touchPoint.tp[1].status = release;
+        return touchPoint;
     }
-    else {
-        uint8_t id1 = read_touch1_id();
-        touchPoint.tp[id1].status = (touchPoint.tp[id1].status == release) ? touch : stream;
-        touchPoint.tp[id1].x = read_touch1_x();
-        touchPoint.tp[id1].y = read_touch1_y();
-        uint8_t id2 = read_touch2_id();
+
+    const uint16_t x1 = ((uint16_t)(buf[1] & 0x0F) << 8) | buf[2];
+    const uint16_t y1 = ((uint16_t)(buf[3] & 0x0F) << 8) | buf[4];
+    touchPoint.tp[id1].status = (touchPoint.tp[id1].status == release) ? touch : stream;
+    touchPoint.tp[id1].x = x1;
+    touchPoint.tp[id1].y = y1;
+    touchPoint.tp[~id1 & 0x01].status = release;
+
+    if (cnt == 2) {
+        const uint16_t x2 = ((uint16_t)(buf[7] & 0x0F) << 8) | buf[8];
+        const uint16_t y2 = ((uint16_t)(buf[9] & 0x0F) << 8) | buf[10];
         touchPoint.tp[id2].status = (touchPoint.tp[id2].status == release) ? touch : stream;
-        touchPoint.tp[id2].x = read_touch2_x();
-        touchPoint.tp[id2].y = read_touch2_y();
+        touchPoint.tp[id2].x = x2;
+        touchPoint.tp[id2].y = y2;
     }
 
     return touchPoint;
+}
+
+// 从 addr 起连续读 len 字节（单次 I2C 事务），任何一步失败都返回 false，
+// 调用方据此丢弃整帧数据，而不是拿半截数据继续用。
+bool FT6336U::readBlock(uint8_t addr, uint8_t *buf, size_t len) {
+    if (i2c_dev_handle_ == nullptr) {
+        ESP_LOGE(TAG, "I2C device handle is not initialized");
+        return false;
+    }
+    esp_err_t ret = i2c_master_transmit_receive(i2c_dev_handle_, &addr, 1, buf, len,
+                                                pdMS_TO_TICKS(I2C_MASTER_TIMEOUT_MS));
+    if (ret != ESP_OK) {
+        // 触摸数据每几十毫秒读一次，偶发失败很常见，用 W 级日志避免刷屏
+        ESP_LOGD(TAG, "Read block failed: addr=0x%02X, len=%u, err=%s",
+                 addr, (unsigned)len, esp_err_to_name(ret));
+        return false;
+    }
+    return true;
 }
 
 uint8_t FT6336U::readByte(uint8_t addr) {

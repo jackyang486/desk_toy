@@ -198,6 +198,7 @@ private:
 
     uint8_t readByte(uint8_t addr);
     void writeByte(uint8_t addr, uint8_t data);
+    bool readBlock(uint8_t addr, uint8_t *buf, size_t len);   // 连续读，用于一次取回整块触摸数据
 
     FT6336U_TouchPointType touchPoint;
 };
