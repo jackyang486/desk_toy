@@ -230,6 +230,85 @@ void parse_apic(File &file, uint32_t data_pos, uint32_t fsize, bool v22, Tag &ta
     tag.cover.length = fsize - i;
 }
 
+// LRC 单个时间戳解析："mm:ss.xx" / "mm:ss.xxx" / "mm:ss"，成功返回毫秒
+bool lrc_time(const String &s, uint32_t &ms) {
+    const int colon = s.indexOf(':');
+    if (colon <= 0 || colon == (int)s.length() - 1) return false;
+    const int dot = s.indexOf('.', colon);
+    const int sec_end = (dot > colon) ? dot : s.length();
+    if (dot == (int)s.length() - 1) return false;
+    // 冒号前后必须是纯数字（区分 [ti:彩虹] 这类元数据 tag）
+    for (int i = 0; i < colon; i++) if (!isdigit((unsigned char)s[i])) return false;
+    for (int i = colon + 1; i < sec_end; i++) if (!isdigit((unsigned char)s[i])) return false;
+    if (dot > 0) for (int i = dot + 1; i < (int)s.length(); i++) if (!isdigit((unsigned char)s[i])) return false;
+
+    const long m   = s.substring(0, colon).toInt();
+    const long sec = s.substring(colon + 1, sec_end).toInt();
+    long frac_ms = 0;
+    if (dot > 0) {
+        const String f = s.substring(dot + 1);
+        const long v = f.toInt();
+        if (f.length() == 1)      frac_ms = v * 100;  // .x → 十分秒
+        else if (f.length() == 2) frac_ms = v * 10;   // .xx → 百分秒
+        else                      frac_ms = v;        // .xxx 及以上 → 毫秒
+    }
+    ms = (uint32_t)(m * 60000L + sec * 1000L + frac_ms);
+    return true;
+}
+
+// 把 LRC 文本转成同步歌词列表。
+// TXXX "LYRICS" / USLT 帧里常见这种形式（Windows 播放器能识别的歌词就是它），
+// 而 SYLT 是另一种"正文+独立时间戳"的二进制格式，由 parse_sylt 处理。
+// 行格式：可带多个时间戳前缀 [mm:ss.xx][mm:ss.xx]歌词；[ti:]/[ar:]/[by:] 等元数据行跳过。
+void parse_lrc(const String &lrc, Tag &tag) {
+    long offset_ms = 0;   // [offset:+500] 整体平移（毫秒），有则应用
+    int p = lrc.indexOf("[offset:");
+    if (p >= 0) {
+        const int e = lrc.indexOf(']', p);
+        if (e > p) offset_ms = lrc.substring(p + 8, e).toInt();
+    }
+
+    int pos = 0;
+    const int len = lrc.length();
+    while (pos < len) {
+        int eol = lrc.indexOf('\n', pos);
+        if (eol < 0) eol = len;
+
+        uint32_t stamp[8];
+        int ns = 0;
+        int scan = pos;
+        bool skip_line = false;
+        while (scan < eol && lrc.charAt(scan) == '[') {
+            const int close = lrc.indexOf(']', scan);
+            if (close < 0 || close >= eol) { skip_line = true; break; }
+            uint32_t ms;
+            if (lrc_time(lrc.substring(scan + 1, close), ms)) {
+                if (ns < (int)(sizeof(stamp) / sizeof(stamp[0]))) stamp[ns++] = ms;
+                scan = close + 1;
+            } else {
+                skip_line = true;   // [ti:...] 等元数据行
+                break;
+            }
+        }
+        pos = eol + 1;
+        if (skip_line || ns == 0) continue;
+
+        String text = lrc.substring(scan, eol);
+        text.trim();
+        if (!text.isEmpty() && text[text.length() - 1] == '\r') text.remove(text.length() - 1);
+        text.trim();
+        if (text.isEmpty()) continue;
+
+        for (int k = 0; k < ns; k++) {
+            LyricLine line;
+            const long t = (long)stamp[k] + offset_ms;
+            line.time_ms = (t > 0) ? (uint32_t)t : 0;   // offset 为负时防下溢
+            line.text = text;
+            tag.lyrics.push_back(line);
+        }
+    }
+}
+
 }  // namespace
 
 void Tag::clear() {
@@ -391,6 +470,17 @@ bool parse(File &file, Tag &tag) {
     if (!tag.lyrics.empty()) {
         std::stable_sort(tag.lyrics.begin(), tag.lyrics.end(),
                          [](const LyricLine &a, const LyricLine &b) { return a.time_ms < b.time_ms; });
+    }
+    // 没有 SYLT 同步歌词时，若 TXXX "LYRICS"/USLT 存的是 LRC 文本（带 [mm:ss.xx] 时间戳，
+    // Windows 播放器显示的就是它），现场转成同步歌词，让这类文件也能逐行显示。
+    if (tag.lyrics.empty() && tag.plain_lyrics.length() > 8 &&
+        tag.plain_lyrics.indexOf('[') >= 0) {
+        parse_lrc(tag.plain_lyrics, tag);
+        if (!tag.lyrics.empty()) {
+            std::stable_sort(tag.lyrics.begin(), tag.lyrics.end(),
+                             [](const LyricLine &a, const LyricLine &b) { return a.time_ms < b.time_ms; });
+            printf("[id3] LRC->synced: %u 行\n", (unsigned)tag.lyrics.size());
+        }
     }
     return true;
 }
