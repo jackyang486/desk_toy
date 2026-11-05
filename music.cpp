@@ -38,7 +38,11 @@ static const char *basePath = "S:/music";
 // 库的 evt_lyrics 解析 UTF-8 编码的 SYLT 有 off-by-one（时间戳全错），evt_image 只给偏移不读数据，
 // 所以这里用 id3_parser 自己解析：歌词按播放进度显示，封面取 APIC 数据自己缩小解码后显示。
 #define COVER_BOX_SIZE 180        // 与 setup_scr_screen_music.c 里 screen_music_album_img 的尺寸保持一致
-static id3::Tag  g_id3;              // 当前歌曲的标签
+// 当前歌曲的标签。注意生命周期：进音乐页 new，退音乐页 delete。
+// 不能只靠 clear()：vector.clear() 不还元素数组容量，String 赋 "" 不还缓冲，
+// 退出后仍会常驻 2~6KB 且正好散在主区的空闲洞里，阻碍空闲块合并。
+static id3::Tag *g_id3_ptr = NULL;
+#define g_id3 (*g_id3_ptr)          // 既有 17 处 g_id3.xxx 引用无需改动
 static int32_t   g_lyric_index = -2; // 当前显示的歌词行下标（-2 表示还没写过文本）
 
 // 封面：LVGL 的内存池只有 128KB，直接让它解码 500x500 的 jpg 要整张解码图 + 缩放变换，必然失败。
@@ -110,7 +114,7 @@ static void cover_release(void) {
 // 把当前歌曲的 APIC 图片解码成 180x180 显示
 static void cover_show(void) {
     lv_obj_t *img = guider_ui.screen_music_album_img;
-    if (img == NULL || !g_id3.has_cover() || g_cur_file_path[0] == '\0') return;
+    if (img == NULL || g_id3_ptr == NULL || !g_id3.has_cover() || g_cur_file_path[0] == '\0') return;
 
     uint8_t *jpg = (uint8_t *)heap_caps_malloc(g_id3.cover.length, MALLOC_CAP_SPIRAM);
     if (jpg == NULL) jpg = (uint8_t *)malloc(g_id3.cover.length);
@@ -225,7 +229,7 @@ static void cover_show(void) {
 
 // 按播放进度切换歌词行（curr_sec 是秒）
 static void lyric_update(uint32_t curr_sec) {
-    if (g_id3.lyrics.empty()) return;
+    if (g_id3_ptr == NULL || g_id3.lyrics.empty()) return;
     if (lv_obj_has_flag(guider_ui.screen_music_label_music_name, LV_OBJ_FLAG_HIDDEN)) return;
     const int idx = g_id3.line_at(curr_sec * 1000u);
     if (idx == g_lyric_index) return;
@@ -235,6 +239,7 @@ static void lyric_update(uint32_t curr_sec) {
 
 // 解锁当前歌曲的标签：更新歌名、封面、歌词（在 LVGL 线程调用）
 static void load_id3_info(const char *full_path) {
+    if (g_id3_ptr == NULL) return;   // 不在音乐页时标签对象不存在
     g_id3.clear();
     g_lyric_index = -1;
 
@@ -408,8 +413,6 @@ void music_back_task(void *pvParam){
     audio->loop();
     vTaskDelay(1);
   }
-  printf("[music] task exit, stack free=%u bytes\n",
-         (unsigned)(uxTaskGetStackHighWaterMark(NULL) * sizeof(StackType_t)));
   music_back_task_handle = NULL;  // 先清句柄，通知主线程本任务已退出
   vTaskDelete(NULL);
 }
@@ -659,6 +662,7 @@ void Music_player::music_loop(SCREEN_LOAD_STAUS playerLoadStatus){
         lv_obj_add_flag(page_head.time_label,LV_OBJ_FLAG_HIDDEN);
         if (audio != nullptr) return;   // 重入保护：重复 LOADED 会覆盖 audio 指针，导致 PSRAM 与 I2S 通道泄漏
         g_eof_pending = false;          // 清掉上一轮遗留的切歌标志
+        if (g_id3_ptr == NULL) g_id3_ptr = new id3::Tag();  // 进页面创建（退页面销毁），退出后标签内存整体归还堆
         list_start_index = 0;           // 列表回到首页，避免与上次退出时的滑动位置错位
         list_is_touching = false;
         music_files.reserve(128);       // 预分配，减少扫描期间 vector 反复 realloc 造成的 DRAM 碎片
@@ -715,7 +719,12 @@ void Music_player::music_loop(SCREEN_LOAD_STAUS playerLoadStatus){
         }
         vTaskDelay(pdMS_TO_TICKS(500));
         cover_release();                // 恢复默认封面并释放封面缓冲
-        g_id3.clear();
+        // 整个销毁标签对象：clear() 只清内容，vector 的元素数组容量和 String 的缓冲
+        // （合计约 2~6KB，散在主区空闲洞里）不会归还；delete 才能全部还给堆。
+        if (g_id3_ptr != NULL) {
+            delete g_id3_ptr;
+            g_id3_ptr = NULL;
+        }
         // 3) 销毁 Audio 对象：析构函数 stopSong + disable/del I2S_NUM_0 通道 + stopAudioTask + 释放互斥锁
         if (audio != nullptr) {
             audio->stopSong();
