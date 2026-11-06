@@ -281,6 +281,22 @@ void SetEmotion(const std::string& emotion) {
   }
 }
 
+// ---- 表情切换统一经由 lv_timer 在 LVGL 线程执行 ----
+// chat_loop 跑在 xiaozhi_chat_task（独立 FreeRTOS 任务）里，直接调
+// lv_obj_set_style_* 与 LVGL 渲染线程并发不安全；这里只记录待切换表情，
+// 由 emotion_switch_timer_cb（lv_timer，跑在 LVGL 线程）真正应用。
+// 先置 invalid → 拷贝 → 置 valid 的顺序保证 timer 读到的一定是完整字符串。
+static char g_pending_emotion[24];            // 表情名最长 "embarrassed"(12)，24B 足够
+static volatile bool g_pending_emotion_valid = false;
+
+static void emotion_switch_timer_cb(lv_timer_t *timer) {
+  if (!g_pending_emotion_valid) {
+    return;
+  }
+  g_pending_emotion_valid = false;
+  SetEmotion(g_pending_emotion);
+}
+
 static void RobotWinLongPressCb(lv_event_t *event) {
   if (event == nullptr) {
     return;
@@ -359,6 +375,9 @@ void chat_init() {
 
     SetEmotion("sleepy");
 
+  // 表情切换定时器：周期扫描待切换表情（本函数运行在 LVGL 线程/加载回调里，创建安全）
+  lv_timer_create(emotion_switch_timer_cb, 100, NULL);
+
 }
 
 void chat_loop() {
@@ -423,7 +442,11 @@ void chat_loop() {
       }
     } else if (auto emotion_event = std::get_if<ai_vox::EmotionEvent>(&event)) {
       printf("emotion: %s\n", emotion_event->emotion.c_str());
-      SetEmotion(emotion_event->emotion.c_str());
+      // 不在 LVGL 线程外操作 UI：只记录待切换表情，由 emotion_switch_timer_cb 应用
+      g_pending_emotion_valid = false;
+      strncpy(g_pending_emotion, emotion_event->emotion.c_str(), sizeof(g_pending_emotion) - 1);
+      g_pending_emotion[sizeof(g_pending_emotion) - 1] = '\0';
+      g_pending_emotion_valid = true;
     } else if (auto chat_message_event = std::get_if<ai_vox::ChatMessageEvent>(&event)) {
       switch (chat_message_event->role) {
         case ai_vox::ChatRole::kAssistant: {
