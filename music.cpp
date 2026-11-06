@@ -227,11 +227,200 @@ static void cover_show(void) {
 }
 
 
+// ---------------- 整页歌词（点击封面容器切换） ----------------
+// 9 行铺满 240x205（容器在 setup_scr_screen_music.c:311，宽 240 高 205）：
+// 中间一行 18px 黄色，向上下依次 16/14/12/10，水平/垂直均居中。
+// 注意：工程里只有 16px 的中文字体(font_puhui_16_4)，没有 10/12/14/18 的中文字模，
+// 所以这里统一用 16px 字体 + transform_scale 缩放得到其它字号（256 = 100%）。
+// 若后续用 lv_font_conv 生成真字号的字体，只需替换 LYRIC_BASE_FONT 并按 px 直接设字号。
+#define LYRIC_ROWS      9
+#define LYRIC_ROW_W     240
+#define LYRIC_ROW_H     205
+#define LYRIC_BASE_FONT font_puhui_16_4
+#define LYRIC_YELLOW    0xffb900
+
+static lv_obj_t *g_lyric_cont = NULL;               // 9 行歌词容器（首次点击时创建）
+static lv_obj_t *g_lyric_row[LYRIC_ROWS] = {0};
+static bool      g_lyric_page_on   = false;         // false=封面模式，true=整页歌词
+static int32_t   g_lyric_page_cur  = -2;            // 整页歌词当前居中行（-2 表示待刷新）
+
+// 每行的字号、缩放比、行高、Y 坐标。
+// 行高按"字号+6"排布，总高 176 + 8 段间距 3 = 200；容器高 205，上留 2 下留 3，垂直居中。
+static const struct {
+    uint8_t  px;      // 目标字号
+    int16_t  scale;   // 相对 16px 的缩放（256 = 100%）
+    int16_t  h;       // 行高
+    int16_t  y;       // 相对容器顶部的 Y
+} kLyricRowStyle[LYRIC_ROWS] = {
+    {10, 160, 16,   2},
+    {12, 192, 18,  21},
+    {14, 224, 20,  42},
+    {16, 256, 22,  65},
+    {18, 288, 24,  90},   // 中间行：当前歌词（90..114，中心 102 ≈ 容器中心 102.5）
+    {16, 256, 22, 117},
+    {14, 224, 20, 142},
+    {12, 192, 18, 165},
+    {10, 160, 16, 186},   // 186+16=202，底部留 3
+};
+
+static void lyric_page_create(void) {
+    if (g_lyric_cont != NULL) return;
+    lv_obj_t *parent = guider_ui.screen_music_cont_cover;
+    if (parent == NULL) return;
+
+    g_lyric_cont = lv_obj_create(parent);
+    if (g_lyric_cont == NULL) {          // LVGL 内存池耗尽时会返回 NULL，不判空会直接崩
+        printf("[lyric] create container fail\n");
+        return;
+    }
+    lv_obj_set_pos(g_lyric_cont, 0, 0);
+    lv_obj_set_size(g_lyric_cont, LYRIC_ROW_W, LYRIC_ROW_H);
+    lv_obj_set_scrollbar_mode(g_lyric_cont, LV_SCROLLBAR_MODE_OFF);
+    lv_obj_remove_flag(g_lyric_cont, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_remove_flag(g_lyric_cont, LV_OBJ_FLAG_CLICKABLE);  // 不接收点击，事件落到下层封面容器
+    lv_obj_set_style_bg_opa(g_lyric_cont, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_border_width(g_lyric_cont, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_radius(g_lyric_cont, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_pad_all(g_lyric_cont, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_add_flag(g_lyric_cont, LV_OBJ_FLAG_HIDDEN);
+
+    for (int i = 0; i < LYRIC_ROWS; i++) {
+        lv_obj_t *l = lv_label_create(g_lyric_cont);
+        if (l == NULL) {
+            printf("[lyric] create row %d fail\n", i);
+            break;
+        }
+        lv_label_set_text(l, "");
+        lv_label_set_long_mode(l, LV_LABEL_LONG_CLIP);   // 歌词超宽时裁掉，不撑破容器
+        lv_obj_set_pos(l, 0, kLyricRowStyle[i].y);
+        lv_obj_set_size(l, LYRIC_ROW_W, kLyricRowStyle[i].h);
+        lv_obj_set_style_text_font(l, &LYRIC_BASE_FONT, LV_PART_MAIN | LV_STATE_DEFAULT);
+        lv_obj_set_style_text_color(l, lv_color_hex(i == 4 ? LYRIC_YELLOW : 0x000000), LV_PART_MAIN | LV_STATE_DEFAULT);
+        lv_obj_set_style_text_align(l, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN | LV_STATE_DEFAULT);
+        lv_obj_set_style_text_opa(l, 255, LV_PART_MAIN | LV_STATE_DEFAULT);
+        lv_obj_set_style_pad_all(l, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
+        lv_obj_set_style_bg_opa(l, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
+        if (kLyricRowStyle[i].scale != 256) {
+            // 缩放轴必须用**像素**（宽/2、行高/2），不能用 lv_pct()：
+            // pivot 是长度属性，百分比可能被当作原始数值解析（50px），导致缩放后
+            // 内容整体偏移、重绘区域跑到容器外，是切页闪屏的可疑来源之一。
+            lv_obj_set_style_transform_pivot_x(l, LYRIC_ROW_W / 2, LV_PART_MAIN | LV_STATE_DEFAULT);
+            lv_obj_set_style_transform_pivot_y(l, kLyricRowStyle[i].h / 2, LV_PART_MAIN | LV_STATE_DEFAULT);
+            lv_obj_set_style_transform_scale(l, kLyricRowStyle[i].scale, LV_PART_MAIN | LV_STATE_DEFAULT);
+        }
+        g_lyric_row[i] = l;
+    }
+}
+
+// 以 cur 行为中心填充 9 行；越界的位置留空，形成"首尾渐入/渐出"的效果
+static void lyric_page_fill(int32_t cur) {
+    if (g_lyric_cont == NULL || g_id3_ptr == NULL) return;
+    const int32_t n = (int32_t)g_id3.lyrics.size();
+    for (int i = 0; i < LYRIC_ROWS; i++) {
+        if (g_lyric_row[i] == NULL) continue;
+        const int32_t idx = cur + (i - 4);
+        const char *txt = (idx >= 0 && idx < n) ? g_id3.lyrics[idx].text.c_str() : "";
+        lv_label_set_text(g_lyric_row[i], txt);
+    }
+}
+
+// 封面 / 整页歌词 之间切换（由 screen_music_cont_cover 的点击事件驱动，LVGL 线程内执行）
+static void lyric_page_toggle(void) {
+    if (guider_ui.screen_music_cont_cover == NULL) return;
+
+    if (!g_lyric_page_on) {
+        if (g_id3_ptr == NULL || !g_id3.has_lyrics()) return;   // 没有歌词就不切，保持封面
+        lyric_page_create();
+        if (g_lyric_cont == NULL) return;
+        if (guider_ui.screen_music_album_img != NULL) {
+            lv_obj_add_flag(guider_ui.screen_music_album_img, LV_OBJ_FLAG_HIDDEN);
+        }
+        if (guider_ui.screen_music_label_music_name != NULL) {
+            lv_obj_add_flag(guider_ui.screen_music_label_music_name, LV_OBJ_FLAG_HIDDEN);
+        }
+        lv_obj_remove_flag(g_lyric_cont, LV_OBJ_FLAG_HIDDEN);
+        g_lyric_page_on = true;
+        // 立即按最近一次读到的播放位置填一次，避免等下一次定时器（最多 1s）才出字
+        const int32_t cur = g_id3.line_at(g_last_curr_sec * 1000u);
+        g_lyric_page_cur = cur;
+        lyric_page_fill(cur);
+    } else {
+        if (g_lyric_cont != NULL) lv_obj_add_flag(g_lyric_cont, LV_OBJ_FLAG_HIDDEN);
+        if (guider_ui.screen_music_album_img != NULL) {
+            lv_obj_remove_flag(guider_ui.screen_music_album_img, LV_OBJ_FLAG_HIDDEN);
+        }
+        if (guider_ui.screen_music_label_music_name != NULL) {
+            if (g_id3_ptr != NULL && g_id3.has_lyrics()) {
+                lv_obj_remove_flag(guider_ui.screen_music_label_music_name, LV_OBJ_FLAG_HIDDEN);
+            } else {
+                lv_obj_add_flag(guider_ui.screen_music_label_music_name, LV_OBJ_FLAG_HIDDEN);
+            }
+        }
+        g_lyric_page_on  = false;
+        g_lyric_page_cur = -2;
+        g_lyric_index    = -2;   // 让单行歌词重新写一次
+    }
+}
+
+static void lyric_cover_click_cb(lv_event_t *e) {
+    if (lv_event_get_code(e) != LV_EVENT_CLICKED) return;
+    lyric_page_toggle();
+}
+
+// 关闭主题在"按下/松开"上的过渡动画。
+// 坑：不能写 lv_obj_set_style_transition(obj, NULL, ...) —— LVGL 会把这个属性存成
+// "存在但值为 NULL"，点击时 DEFAULT→PRESSED 的 update_obj_state() 取到 tr = NULL
+// 后直接读 tr->props[0]，触发 LoadProhibited（EXCVADDR=0）崩溃。
+// 必须给一个 props 为空表的"真"描述符：props[0]==0，LVGL 的循环会立刻退出。
+static lv_style_prop_t kNoTransProps[] = {(lv_style_prop_t)0};
+static lv_style_transition_dsc_t kNoTransition;
+
+// 注册封面点击事件（只注册一次：重复注册会让一次点击触发多次切换）
+static void lyric_click_init(void) {
+    static bool registered = false;
+    if (registered || guider_ui.screen_music_cont_cover == NULL) return;
+    lv_obj_add_flag(guider_ui.screen_music_cont_cover, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_add_event_cb(guider_ui.screen_music_cont_cover, lyric_cover_click_cb, LV_EVENT_CLICKED, NULL);
+    lv_style_transition_dsc_init(&kNoTransition, kNoTransProps, lv_anim_path_linear, 0, 0, NULL);
+    lv_obj_set_style_transition(guider_ui.screen_music_cont_cover, &kNoTransition,
+                                LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_transition(guider_ui.screen_music_cont_cover, &kNoTransition,
+                                LV_PART_MAIN | LV_STATE_PRESSED);
+    // 封面图自己带 CLICKABLE，点在图上的事件要靠冒泡才能到容器
+    if (guider_ui.screen_music_album_img != NULL) {
+        lv_obj_add_flag(guider_ui.screen_music_album_img, LV_OBJ_FLAG_EVENT_BUBBLE);
+    }
+    registered = true;
+}
+
+// 退出音乐页时回到封面模式，下次进来状态干净
+static void lyric_page_reset(void) {
+    if (g_lyric_cont != NULL) lv_obj_add_flag(g_lyric_cont, LV_OBJ_FLAG_HIDDEN);
+    if (guider_ui.screen_music_album_img != NULL) lv_obj_remove_flag(guider_ui.screen_music_album_img, LV_OBJ_FLAG_HIDDEN);
+    if (guider_ui.screen_music_label_music_name != NULL) {
+        if (g_id3_ptr != NULL && g_id3.has_lyrics()) {
+            lv_obj_remove_flag(guider_ui.screen_music_label_music_name, LV_OBJ_FLAG_HIDDEN);
+        } else {
+            lv_obj_add_flag(guider_ui.screen_music_label_music_name, LV_OBJ_FLAG_HIDDEN);
+        }
+    }
+    g_lyric_page_on  = false;
+    g_lyric_page_cur = -2;
+    g_lyric_index    = -2;
+}
+
 // 按播放进度切换歌词行（curr_sec 是秒）
 static void lyric_update(uint32_t curr_sec) {
     if (g_id3_ptr == NULL || g_id3.lyrics.empty()) return;
-    if (lv_obj_has_flag(guider_ui.screen_music_label_music_name, LV_OBJ_FLAG_HIDDEN)) return;
     const int idx = g_id3.line_at(curr_sec * 1000u);
+
+    if (g_lyric_page_on) {                 // 整页歌词：内容整体上移一行
+        if (idx == g_lyric_page_cur) return;
+        g_lyric_page_cur = idx;
+        lyric_page_fill(idx);
+        return;
+    }
+    if (lv_obj_has_flag(guider_ui.screen_music_label_music_name, LV_OBJ_FLAG_HIDDEN)) return;
     if (idx == g_lyric_index) return;
     g_lyric_index = idx;
     lv_label_set_text(guider_ui.screen_music_label_music_name, idx >= 0 ? g_id3.lyrics[idx].text.c_str() : "");
@@ -268,6 +457,8 @@ static void load_id3_info(const char *full_path) {
 
     cover_show();
     if (guider_ui.screen_music_label_music_name != NULL && g_id3.has_lyrics()) lv_obj_clear_flag(guider_ui.screen_music_label_music_name, LV_OBJ_FLAG_HIDDEN);
+    // 正在看整页歌词却换到了没有歌词的歌：自动退回封面，别停在一屏空白上
+    if (g_lyric_page_on && !g_id3.has_lyrics()) lyric_page_toggle();
 }
 
 Music_player::Music_player():playEnable(false),playSequence(false),list_start_index(0),touch_start_Y(0){
@@ -677,6 +868,8 @@ void Music_player::music_loop(SCREEN_LOAD_STAUS playerLoadStatus){
         lv_obj_set_style_text_font(guider_ui.screen_music_label_music_name, &font_puhui_16_4, LV_PART_MAIN|LV_STATE_DEFAULT); 
         lv_obj_set_style_text_font(guider_ui.screen_music_label_title, &font_puhui_16_4, LV_PART_MAIN|LV_STATE_DEFAULT); 
         cover_reset();                  // 默认封面资源是 100x100，先缩回原尺寸居中显示
+        lyric_click_init();             // 封面容器点击 → 封面/整页歌词切换
+        lyric_page_reset();
         if (music_timer == NULL) {
             music_timer = lv_timer_create(lv_timer_refresh_time, 50, NULL);
         }
@@ -718,6 +911,7 @@ void Music_player::music_loop(SCREEN_LOAD_STAUS playerLoadStatus){
             music_timer = NULL;
         }
         vTaskDelay(pdMS_TO_TICKS(500));
+        lyric_page_reset();             // 整页歌词可能正显示着，先退回封面模式
         cover_release();                // 恢复默认封面并释放封面缓冲
         // 整个销毁标签对象：clear() 只清内容，vector 的元素数组容量和 String 的缓冲
         // （合计约 2~6KB，散在主区空闲洞里）不会归还；delete 才能全部还给堆。
