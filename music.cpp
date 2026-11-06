@@ -16,6 +16,8 @@
 #include <random>
 #include <chrono>
 #include "Ticker.h"
+#include <Adafruit_NeoPixel.h>
+#include <atomic>
 #define I2S_MCK   4
 #define I2S_BCK   5
 #define I2S_DOUT  8
@@ -465,6 +467,55 @@ Music_player::Music_player():playEnable(false),playSequence(false),list_start_in
       
 };
 
+// ---------------- WS2812B 响度灯（GPIO42） ----------------
+// 随音乐响度变化的 RGB 灯。数据链路：
+//   Audio 库(VU_LEVEL=true，每 ~50ms 一帧) --evt_vu--> on_audio_info 记录响度(原子变量)
+//   -> lv_timer_refresh_time(LVGL 线程，50ms) 读响度 → NeoPixel 上色刷新
+// NeoPixel(RMT) 只在 LVGL 线程写，避免音频线程与主线程并发操作 RMT。
+// 说明：库的 VU 采样点在软件音量 Gain 之前，反映的是"解码信号本身的响度"，
+// 调低软件音量时灯照样跳（响度可视化的常规行为）；响度值库内已做 sqrt 压缩 + 平滑。
+#define RGB_LED_PIN     42
+#define RGB_LED_COUNT   1        // 板上是几颗 WS2812 就改这里，多于 1 颗时全部同色显示
+#define RGB_LED_MIN_LVL 8        // 低于该响度视为静音，灯熄灭（过滤底噪）
+#define RGB_LED_HOLD_MS 300      // 超过这么久没有新 VU 帧（暂停/停止）就把灯熄掉
+
+static Adafruit_NeoPixel g_rgb(RGB_LED_COUNT, RGB_LED_PIN, NEO_GRB + NEO_KHZ800);
+static bool g_rgb_inited = false;
+static std::atomic<uint8_t> g_rgb_level{0};   // 最近一帧 VU 响度 0~255（音频线程写、LVGL 线程读）
+static uint32_t g_rgb_last_evt_ms = 0;        // 最近一次收到 VU 帧的时刻
+static uint8_t  g_rgb_shown_val = 0;          // 灯上当前显示的亮度，用于跳过重复刷新
+
+static void rgb_led_init(void) {
+    if (g_rgb_inited) return;
+    g_rgb.begin();               // 占用 RMT 通道，exit 时 clear 一次
+    g_rgb.clear();
+    g_rgb.show();
+    g_rgb_inited = true;
+}
+
+static void rgb_led_show(uint8_t level) {
+    if (!g_rgb_inited) return;
+    level = (level < RGB_LED_MIN_LVL) ? 0 : level;
+    if (level == g_rgb_shown_val) return;   // 没变化就不动 RMT
+    g_rgb_shown_val = level;
+    if (level == 0) {
+        g_rgb.clear();
+    } else {
+        // 低响度绿 → 中响度黄 → 高响度红，亮度跟随响度；gamma32 校正人眼感知
+        const uint16_t hue = (uint32_t)(255 - level) * 21845 / 255;  // 21845 ≈ 120°(绿)
+        const uint32_t c = g_rgb.gamma32(g_rgb.ColorHSV(hue, 255, level));
+        for (int i = 0; i < RGB_LED_COUNT; i++) g_rgb.setPixelColor(i, c);
+    }
+    g_rgb.show();
+}
+
+static void rgb_led_off(void) {
+    if (!g_rgb_inited || g_rgb_shown_val == 0) return;
+    g_rgb_shown_val = 0;
+    g_rgb.clear();
+    g_rgb.show();
+}
+
 void on_audio_info(Audio::msg_t msg) {
     switch (msg.e) {
 //S        case Audio::evt_spectrum:
@@ -483,6 +534,15 @@ void on_audio_info(Audio::msg_t msg) {
 //S            break;
         case Audio::evt_eof:
             g_eof_pending = true;   // 交给主线程切下一曲
+            break;
+        case Audio::evt_vu:
+            // vec1 = [l, r, peakL, peakR]，0~255，库内每 ~50ms 一帧且已做 attack/release 平滑
+            // 取左右声道较大者当作"响度"，只记原子变量，灯的实际刷新放在 LVGL 定时器里
+            if (msg.vec1.size() >= 2) {
+                const uint8_t lvl = (uint8_t)max((uint32_t)msg.vec1[0], (uint32_t)msg.vec1[1]);
+                g_rgb_level.store(lvl, std::memory_order_relaxed);
+                g_rgb_last_evt_ms = millis();
+            }
             break;
         case Audio::evt_image:
         case Audio::evt_lyrics:
@@ -648,6 +708,14 @@ static void lv_timer_refresh_time(lv_timer_t *timer)
                        (unsigned)(total_sec - g_last_curr_sec));
             }
             handle_eof_next();
+        }
+    }
+    // WS2812B 响度灯：有新 VU 帧就跟响度；超时没有新帧（暂停/停止）则熄灭
+    if (g_rgb_inited) {
+        if (millis() - g_rgb_last_evt_ms < RGB_LED_HOLD_MS) {
+            rgb_led_show(g_rgb_level.load(std::memory_order_relaxed));
+        } else {
+            rgb_led_off();
         }
     }
 }
@@ -870,6 +938,7 @@ void Music_player::music_loop(SCREEN_LOAD_STAUS playerLoadStatus){
         cover_reset();                  // 默认封面资源是 100x100，先缩回原尺寸居中显示
         lyric_click_init();             // 封面容器点击 → 封面/整页歌词切换
         lyric_page_reset();
+        rgb_led_init();                 // WS2812B 响度灯（GPIO42）
         if (music_timer == NULL) {
             music_timer = lv_timer_create(lv_timer_refresh_time, 50, NULL);
         }
@@ -886,6 +955,7 @@ void Music_player::music_loop(SCREEN_LOAD_STAUS playerLoadStatus){
             audio->setPinout(I2S_BCK, I2S_WS, I2S_DOUT, I2S_MCK);
             audio->setTone(0, 0, 0);                   // 触发计算 0dB 平坦响应系数，避免 IIR coeffs 全 0 导致静音
             audio->settings.IIR_FILTER = false;        // 绕过 biquad IIR（旧 esp-dsp 与新版库系数约定不兼容造成静音）
+            audio->settings.VU_LEVEL = true;           // 使能响度表（evt_vu，每 ~50ms 一帧，仅 RMS 取样不开 FFT，开销很小）
             //S audio->settings.SPECTRUM = true;         // 使能频谱分析（evt_spectrum，新版库默认 false）—— 频谱已关闭，不再开启 FFT 计算
             Setting::GetInstance().ApplySoftwareVolume(audio);  // 滑块百分比 → 软件音量（v4.0.0 默认 0 即静音）
             audio->audio_info_callback = on_audio_info; // 注册事件回调，接收频谱/EOF/封面/歌词数据
@@ -910,6 +980,7 @@ void Music_player::music_loop(SCREEN_LOAD_STAUS playerLoadStatus){
             lv_timer_del(music_timer);
             music_timer = NULL;
         }
+        rgb_led_off();                  // 退出音乐页熄灭 WS2812B
         vTaskDelay(pdMS_TO_TICKS(500));
         lyric_page_reset();             // 整页歌词可能正显示着，先退回封面模式
         cover_release();                // 恢复默认封面并释放封面缓冲
