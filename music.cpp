@@ -16,8 +16,6 @@
 #include <random>
 #include <chrono>
 #include "Ticker.h"
-#include <Adafruit_NeoPixel.h>
-#include <atomic>
 #define I2S_MCK   4
 #define I2S_BCK   5
 #define I2S_DOUT  8
@@ -91,11 +89,9 @@ static int cover_draw_cb(JPEGDRAW *draw) {
 
 static void cover_reset(void) {
     lv_obj_t *img = guider_ui.screen_music_album_img;
-    if (img != NULL) {
-        lv_image_set_src(img, &_cover_2_RGB565A8_180x180);
-        lv_image_set_pivot(img, 50, 50);
-        lv_image_set_scale(img, LV_SCALE_NONE);
-    }
+    lv_image_set_src(img, &_cover_2_RGB565A8_180x180);
+    lv_image_set_pivot(img, 50, 50);
+    lv_image_set_scale(img, LV_SCALE_NONE);
     cover_free_decoded();
 }
 
@@ -129,8 +125,7 @@ static void cover_show(void) {
     const size_t jpg_len = f ? id3::read_cover(f, g_id3, jpg, g_id3.cover.length) : 0;
     if (f) f.close();
     if (jpg_len != g_id3.cover.length) {
-        printf("[cover] read %u != %u（文件可能被截断/损坏）\n",
-               (unsigned)jpg_len, (unsigned)g_id3.cover.length);
+        printf("[cover] read %u != %u（文件可能被截断/损坏）\n", (unsigned)jpg_len, (unsigned)g_id3.cover.length);
         free(jpg);
         return;
     }
@@ -177,7 +172,6 @@ static void cover_show(void) {
     g_cover_decoded = (uint16_t *)heap_caps_malloc(dec_bytes, MALLOC_CAP_SPIRAM);
     if (g_cover_decoded == NULL) g_cover_decoded = (uint16_t *)malloc(dec_bytes);
     if (g_cover_decoded == NULL) {
-        printf("[cover] decode buf alloc %u fail\n", (unsigned)dec_bytes);
         g_cover_dec_w = 0;
         g_cover_dec_h = 0;
         g_jpeg_ctx->close();
@@ -190,7 +184,6 @@ static void cover_show(void) {
     g_jpeg_ctx->close();
     free(jpg);
     if (!decoded) {
-        printf("[cover] jpeg decode fail\n");
         cover_free_decoded();
         return;
     }
@@ -271,10 +264,6 @@ static void lyric_page_create(void) {
     if (parent == NULL) return;
 
     g_lyric_cont = lv_obj_create(parent);
-    if (g_lyric_cont == NULL) {          // LVGL 内存池耗尽时会返回 NULL，不判空会直接崩
-        printf("[lyric] create container fail\n");
-        return;
-    }
     lv_obj_set_pos(g_lyric_cont, 0, 0);
     lv_obj_set_size(g_lyric_cont, LYRIC_ROW_W, LYRIC_ROW_H);
     lv_obj_set_scrollbar_mode(g_lyric_cont, LV_SCROLLBAR_MODE_OFF);
@@ -288,10 +277,6 @@ static void lyric_page_create(void) {
 
     for (int i = 0; i < LYRIC_ROWS; i++) {
         lv_obj_t *l = lv_label_create(g_lyric_cont);
-        if (l == NULL) {
-            printf("[lyric] create row %d fail\n", i);
-            break;
-        }
         lv_label_set_text(l, "");
         lv_label_set_long_mode(l, LV_LABEL_LONG_CLIP);   // 歌词超宽时裁掉，不撑破容器
         lv_obj_set_pos(l, 0, kLyricRowStyle[i].y);
@@ -379,8 +364,6 @@ static lv_style_transition_dsc_t kNoTransition;
 
 // 注册封面点击事件（只注册一次：重复注册会让一次点击触发多次切换）
 static void lyric_click_init(void) {
-    static bool registered = false;
-    if (registered || guider_ui.screen_music_cont_cover == NULL) return;
     lv_obj_add_flag(guider_ui.screen_music_cont_cover, LV_OBJ_FLAG_CLICKABLE);
     lv_obj_add_event_cb(guider_ui.screen_music_cont_cover, lyric_cover_click_cb, LV_EVENT_CLICKED, NULL);
     lv_style_transition_dsc_init(&kNoTransition, kNoTransProps, lv_anim_path_linear, 0, 0, NULL);
@@ -388,11 +371,7 @@ static void lyric_click_init(void) {
                                 LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_transition(guider_ui.screen_music_cont_cover, &kNoTransition,
                                 LV_PART_MAIN | LV_STATE_PRESSED);
-    // 封面图自己带 CLICKABLE，点在图上的事件要靠冒泡才能到容器
-    if (guider_ui.screen_music_album_img != NULL) {
-        lv_obj_add_flag(guider_ui.screen_music_album_img, LV_OBJ_FLAG_EVENT_BUBBLE);
-    }
-    registered = true;
+    lv_obj_add_flag(guider_ui.screen_music_album_img, LV_OBJ_FLAG_EVENT_BUBBLE);
 }
 
 // 退出音乐页时回到封面模式，下次进来状态干净
@@ -444,11 +423,11 @@ static void load_id3_info(const char *full_path) {
         String name = g_id3.artist.isEmpty() ? g_id3.title : (g_id3.artist + " - " + g_id3.title);
         if (guider_ui.screen_music_label_title != NULL) lv_label_set_text(guider_ui.screen_music_label_title, name.c_str());   // 歌名进顶栏
     }
-    printf("[id3] title=%s artist=%s cover=%lu@%lu lyrics=%u plain=%u\n",
-           g_id3.title.c_str(), g_id3.artist.c_str(),
-           (unsigned long)g_id3.cover.length, (unsigned long)g_id3.cover.offset,
-           (unsigned)g_id3.lyrics.size(), (unsigned)g_id3.plain_lyrics.length());
-    if (g_id3.has_lyrics()) {
+     printf("[id3] title=%s artist=%s cover=%lu@%lu lyrics=%u plain=%u\n",
+            g_id3.title.c_str(), g_id3.artist.c_str(),
+            (unsigned long)g_id3.cover.length, (unsigned long)g_id3.cover.offset,
+            (unsigned)g_id3.lyrics.size(), (unsigned)g_id3.plain_lyrics.length());
+     if (g_id3.has_lyrics()) {
         printf("[id3] lyric first=%ums last=%ums \"%s\"\n",
                (unsigned)g_id3.lyrics.front().time_ms,
                (unsigned)g_id3.lyrics.back().time_ms,
@@ -467,94 +446,15 @@ Music_player::Music_player():playEnable(false),playSequence(false),list_start_in
       
 };
 
-// ---------------- WS2812B 响度灯（GPIO42） ----------------
-// 随音乐响度变化的 RGB 灯。数据链路：
-//   Audio 库(VU_LEVEL=true，每 ~50ms 一帧) --evt_vu--> on_audio_info 记录响度(原子变量)
-//   -> lv_timer_refresh_time(LVGL 线程，50ms) 读响度 → NeoPixel 上色刷新
-// NeoPixel(RMT) 只在 LVGL 线程写，避免音频线程与主线程并发操作 RMT。
-// 说明：库的 VU 采样点在软件音量 Gain 之前，反映的是"解码信号本身的响度"，
-// 调低软件音量时灯照样跳（响度可视化的常规行为）；响度值库内已做 sqrt 压缩 + 平滑。
-#define RGB_LED_PIN     42
-#define RGB_LED_COUNT   1        // 板上是几颗 WS2812 就改这里，多于 1 颗时全部同色显示
-#define RGB_LED_MIN_LVL 8        // 低于该响度视为静音，灯熄灭（过滤底噪）
-#define RGB_LED_HOLD_MS 300      // 超过这么久没有新 VU 帧（暂停/停止）就把灯熄掉
-
-static Adafruit_NeoPixel g_rgb(RGB_LED_COUNT, RGB_LED_PIN, NEO_GRB + NEO_KHZ800);
-static bool g_rgb_inited = false;
-static std::atomic<uint8_t> g_rgb_level{0};   // 最近一帧 VU 响度 0~255（音频线程写、LVGL 线程读）
-static uint32_t g_rgb_last_evt_ms = 0;        // 最近一次收到 VU 帧的时刻
-static uint8_t  g_rgb_shown_val = 0;          // 灯上当前显示的亮度，用于跳过重复刷新
-
-static void rgb_led_init(void) {
-    if (g_rgb_inited) return;
-    g_rgb.begin();               // 占用 RMT 通道，exit 时 clear 一次
-    g_rgb.clear();
-    g_rgb.show();
-    g_rgb_inited = true;
-}
-
-static void rgb_led_show(uint8_t level) {
-    if (!g_rgb_inited) return;
-    level = (level < RGB_LED_MIN_LVL) ? 0 : level;
-    if (level == g_rgb_shown_val) return;   // 没变化就不动 RMT
-    g_rgb_shown_val = level;
-    if (level == 0) {
-        g_rgb.clear();
-    } else {
-        // 低响度绿 → 中响度黄 → 高响度红，亮度跟随响度；gamma32 校正人眼感知
-        const uint16_t hue = (uint32_t)(255 - level) * 21845 / 255;  // 21845 ≈ 120°(绿)
-        const uint32_t c = g_rgb.gamma32(g_rgb.ColorHSV(hue, 255, level));
-        for (int i = 0; i < RGB_LED_COUNT; i++) g_rgb.setPixelColor(i, c);
-    }
-    g_rgb.show();
-}
-
-static void rgb_led_off(void) {
-    if (!g_rgb_inited || g_rgb_shown_val == 0) return;
-    g_rgb_shown_val = 0;
-    g_rgb.clear();
-    g_rgb.show();
-}
-
 void on_audio_info(Audio::msg_t msg) {
     switch (msg.e) {
-//S        case Audio::evt_spectrum:
-//S            // vec1 = display_vec（15 个对数分贝频段，已内置 attack/release/hold 平滑），各 0~255
-//S            // 线性插值映射到 25 根柱
-//S            if (msg.vec1.size() >= SPECTRUM_SRC_BANDS) {
-//S                for (int i = 0; i < SPECTRUM_BARS; i++) {
-//S                    float pos  = (float)i * (SPECTRUM_SRC_BANDS - 1) / (SPECTRUM_BARS - 1);
-//S                    int   idx0 = (int)pos;
-//S                    int   idx1 = (idx0 + 1 < SPECTRUM_SRC_BANDS) ? idx0 + 1 : idx0;
-//S                    float frac = pos - idx0;
-//S                    float val  = msg.vec1[idx0] * (1.0f - frac) + msg.vec1[idx1] * frac;
-//S                    spectrum_target_heights[i] = (uint8_t)(val * SPECTRUM_MAX_HEIGHT / 255)+1;
-//S                }
-//S            }
-//S            break;
         case Audio::evt_eof:
             g_eof_pending = true;   // 交给主线程切下一曲
             break;
-        case Audio::evt_vu:
-            // vec1 = [l, r, peakL, peakR]，0~255，库内每 ~50ms 一帧且已做 attack/release 平滑
-            // 取左右声道较大者当作"响度"，只记原子变量，灯的实际刷新放在 LVGL 定时器里
-            if (msg.vec1.size() >= 2) {
-                const uint8_t lvl = (uint8_t)max((uint32_t)msg.vec1[0], (uint32_t)msg.vec1[1]);
-                g_rgb_level.store(lvl, std::memory_order_relaxed);
-                g_rgb_last_evt_ms = millis();
-            }
-            break;
         case Audio::evt_image:
         case Audio::evt_lyrics:
-            // 封面 / 歌词统一由 id3_parser 在切歌时解析：
-            // evt_image 只给 [pos, len] 不给数据，evt_lyrics 解析 UTF-8 的 SYLT 有 off-by-one，
-            // 这里不再使用，避免重复读文件。
             break;
         case Audio::evt_id3data:
-            // 非同步歌词 USLT 也通过 ID3 数据事件上抛，避免依赖固定的 "Lyrics:" 前缀。
-            if (msg.msg) {
-                printf("id3: %s\n", msg.msg);
-            }
             break;
         default:
             break;
@@ -644,7 +544,12 @@ void music_sequence(){
 }
 //暂停/播放
 void Music_player::playPauseResume(){
-    audio->pauseResume();
+    // 库的 pauseResume 需要短时独占内部互斥锁（音频任务正在解码/I2S写时可能拿不到，
+    // 此时它返回 false 且不会切换状态），失败就隔 100ms 重试，最多 3 次
+    for (int i = 0; i < 3 && audio != nullptr; i++) {
+        if (audio->pauseResume()) return;
+        vTaskDelay(pdMS_TO_TICKS(100));
+    }
 }
 
 //上一曲
@@ -693,30 +598,7 @@ static void lv_timer_refresh_time(lv_timer_t *timer)
     // 处理音频任务上抛的跨线程事件（EOF 切歌）
     if (g_eof_pending) {
         g_eof_pending = false;
-        // 库在抛 evt_eof 前已经把当前时间清零，这里用定时器最后一次读到的位置判断"是否放完"
-        const uint32_t elapsed_ms = millis() - g_play_start_ms;
-        if (elapsed_ms < 1000) {
-            // 刚开播就来 EOF：这是上一首歌遗留的陈旧事件（比如手动切歌与上一曲结束撞在一起），
-            // 不能跟着切，否则会出现"刚播就跳下一首"
-            printf("[eof] 丢弃陈旧 EOF：本曲仅播放 %lu ms\n", (unsigned long)elapsed_ms);
-        } else {
-            printf("[eof] 切歌：已播 %lu s / 总时长 %u s（%lu ms）\n",
-                   (unsigned long)g_last_curr_sec, (unsigned)total_sec, (unsigned long)elapsed_ms);
-            if (total_sec > 10 && g_last_curr_sec + 5 < total_sec) {
-                // 明显没放完就收到 EOF，说明库算出的音频数据长度偏小（ID3 标签解析/文件损坏）
-                printf("[eof] !! 提前结束：差 %u s，检查该文件的 ID3 标签与文件完整性\n",
-                       (unsigned)(total_sec - g_last_curr_sec));
-            }
-            handle_eof_next();
-        }
-    }
-    // WS2812B 响度灯：有新 VU 帧就跟响度；超时没有新帧（暂停/停止）则熄灭
-    if (g_rgb_inited) {
-        if (millis() - g_rgb_last_evt_ms < RGB_LED_HOLD_MS) {
-            rgb_led_show(g_rgb_level.load(std::memory_order_relaxed));
-        } else {
-            rgb_led_off();
-        }
+         handle_eof_next();
     }
 }
 
@@ -926,19 +808,18 @@ void Music_player::music_loop(SCREEN_LOAD_STAUS playerLoadStatus){
         list_is_touching = false;
         music_files.reserve(128);       // 预分配，减少扫描期间 vector 反复 realloc 造成的 DRAM 碎片
         board.scanDir(basePath,&music_files,MP3_TYPE);
-        // 事件回调只注册一次：重复注册会让 handler 被重复调用并永久多占一份内存
+        cover_reset();                  
         if (!list_cb_registered) {
             lv_obj_add_event_cb(guider_ui.screen_music_list_music, music_list_swipe_event_handler, LV_EVENT_ALL, NULL);
+            lyric_click_init();             // 封面容器点击 → 封面/整页歌词切换
             list_cb_registered = true;
         }
         fill_music_list_panel();        // 内部依据 list_swipe_registered 决定重建还是复用
         list_swipe_registered = true;
         lv_obj_set_style_text_font(guider_ui.screen_music_label_music_name, &font_puhui_16_4, LV_PART_MAIN|LV_STATE_DEFAULT); 
         lv_obj_set_style_text_font(guider_ui.screen_music_label_title, &font_puhui_16_4, LV_PART_MAIN|LV_STATE_DEFAULT); 
-        cover_reset();                  // 默认封面资源是 100x100，先缩回原尺寸居中显示
-        lyric_click_init();             // 封面容器点击 → 封面/整页歌词切换
+     
         lyric_page_reset();
-        rgb_led_init();                 // WS2812B 响度灯（GPIO42）
         if (music_timer == NULL) {
             music_timer = lv_timer_create(lv_timer_refresh_time, 50, NULL);
         }
@@ -955,8 +836,6 @@ void Music_player::music_loop(SCREEN_LOAD_STAUS playerLoadStatus){
             audio->setPinout(I2S_BCK, I2S_WS, I2S_DOUT, I2S_MCK);
             audio->setTone(0, 0, 0);                   // 触发计算 0dB 平坦响应系数，避免 IIR coeffs 全 0 导致静音
             audio->settings.IIR_FILTER = false;        // 绕过 biquad IIR（旧 esp-dsp 与新版库系数约定不兼容造成静音）
-            audio->settings.VU_LEVEL = true;           // 使能响度表（evt_vu，每 ~50ms 一帧，仅 RMS 取样不开 FFT，开销很小）
-            //S audio->settings.SPECTRUM = true;         // 使能频谱分析（evt_spectrum，新版库默认 false）—— 频谱已关闭，不再开启 FFT 计算
             Setting::GetInstance().ApplySoftwareVolume(audio);  // 滑块百分比 → 软件音量（v4.0.0 默认 0 即静音）
             audio->audio_info_callback = on_audio_info; // 注册事件回调，接收频谱/EOF/封面/歌词数据
             const BaseType_t xCoreID = 1;
@@ -980,7 +859,6 @@ void Music_player::music_loop(SCREEN_LOAD_STAUS playerLoadStatus){
             lv_timer_del(music_timer);
             music_timer = NULL;
         }
-        rgb_led_off();                  // 退出音乐页熄灭 WS2812B
         vTaskDelay(pdMS_TO_TICKS(500));
         lyric_page_reset();             // 整页歌词可能正显示着，先退回封面模式
         cover_release();                // 恢复默认封面并释放封面缓冲
