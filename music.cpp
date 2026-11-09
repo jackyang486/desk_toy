@@ -291,8 +291,10 @@ static void rgb_led_init(void) {
     g_rgb_inited = true;
 }
 
-// 响度 → 灯条：60 颗串成一根"音量条"，点亮的颗数随响度增长；
-// 颜色按"条上的位置"取，底部绿 → 中部黄 → 顶部红，看起来像电平表。
+// 响度 → 灯条：点亮的颗数随响度增长；
+// 颜色跟着响度走（不按条上绝对位置）：level 低→绿、中→黄、高→红，
+// 点亮的每颗同色，整条随节拍绿→黄→红地闪。之前按位置取色，小音量
+// 只点亮底部几颗，那里永远是绿，看起来就"只有绿灯在闪"。
 static void rgb_led_show(uint8_t level) {
     if (!g_rgb_inited) return;
     if (level < RGB_LED_MIN_LVL) level = 0;
@@ -305,24 +307,22 @@ static void rgb_led_show(uint8_t level) {
         g_rgb.show();
         return;
     }
+    // 颜色：0~255 映射到 绿(0,255) → 黄(255,255) → 红(255,0)
+    const uint16_t hue = (uint16_t)level * 2;       // 0~510，两段各 255
+    uint8_t r, g;
+    if (hue <= 255) {                               // 绿 → 黄
+        r = (uint8_t)hue;
+        g = 255;
+    } else {                                        // 黄 → 红
+        r = 255;
+        g = (uint8_t)(510 - hue);
+    }
     // 亮度跟随响度，留 40 的底亮，小声时也看得见
     const uint8_t bright = 40 + (uint16_t)level * 215 / 255;
+    r = (uint8_t)((uint16_t)r * bright / 255);
+    g = (uint8_t)((uint16_t)g * bright / 255);
     for (int i = 0; i < RGB_LED_COUNT; i++) {
-        if (i >= (int)lit) {
-            g_rgb.setPixelColor(i, 0);      // 未点亮的全部熄灭
-            continue;
-        }
-        const uint16_t pos = (uint16_t)i * 255 / (RGB_LED_COUNT - 1);   // 0=底部 255=顶部
-        uint8_t r, g;
-        if (pos < 128) {                    // 绿 → 黄
-            r = (uint8_t)(pos * 2);
-            g = 255;
-        } else {                            // 黄 → 红
-            r = 255;
-            g = (uint8_t)((255 - pos) * 2);
-        }
-        g_rgb.setPixelColor(i, g_rgb.Color((uint16_t)r * bright / 255,
-                                          (uint16_t)g * bright / 255, 0, 0));
+        g_rgb.setPixelColor(i, (i < (int)lit) ? ((uint32_t)r << 16 | (uint32_t)g << 8) : 0);
     }
     g_rgb.show();
 }

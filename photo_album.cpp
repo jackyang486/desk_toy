@@ -57,8 +57,8 @@ void photo_win_loaded(SCREEN_LOAD_STAUS status){
             lv_obj_add_event_cb(guider_ui.screen_photo_btn_delete, Photo_album::img_delete, LV_EVENT_CLICKED,NULL);
             lv_obj_add_event_cb(guider_ui.screen_photo_view, Photo_album::online_img_click, LV_EVENT_LONG_PRESSED,&photo_album);
         }
-        lv_obj_clear_flag(guider_ui.screen_photo_btn_web, LV_OBJ_FLAG_CHECKED);
-        lv_obj_clear_flag(guider_ui.screen_photo_btn_loop, LV_OBJ_FLAG_CHECKED);
+        lv_obj_clear_state(guider_ui.screen_photo_btn_web, LV_STATE_CHECKED);
+        lv_obj_clear_state(guider_ui.screen_photo_btn_loop, LV_STATE_CHECKED);
     }else{
         photo_album.playLocal = true;
         if(carousel_timer != NULL)
@@ -80,7 +80,7 @@ void photo_win_loaded(SCREEN_LOAD_STAUS status){
 //上一张
 void Photo_album::img_left_btn(lv_event_t *e){
      auto& photo_album = Photo_album::GetInstance();
-     lv_obj_clear_flag(guider_ui.screen_photo_btn_loop, LV_OBJ_FLAG_CHECKED);
+     lv_obj_clear_state(guider_ui.screen_photo_btn_loop, LV_STATE_CHECKED);
     photo_album.nextBtnCheck = true;
     if(carousel_timer != NULL){
         lv_timer_del(carousel_timer);
@@ -100,7 +100,7 @@ void Photo_album::img_left_btn(lv_event_t *e){
 //下一张
 void Photo_album::img_right_btn(lv_event_t *e){
     
-    lv_obj_clear_flag(guider_ui.screen_photo_btn_loop, LV_OBJ_FLAG_CHECKED);
+    lv_obj_clear_state(guider_ui.screen_photo_btn_loop, LV_STATE_CHECKED);
     auto& photo_album = Photo_album::GetInstance();
     if(carousel_timer != NULL){
         lv_timer_del(carousel_timer);
