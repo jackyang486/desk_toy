@@ -57,8 +57,8 @@ void photo_win_loaded(SCREEN_LOAD_STAUS status){
             lv_obj_add_event_cb(guider_ui.screen_photo_btn_delete, Photo_album::img_delete, LV_EVENT_CLICKED,NULL);
             lv_obj_add_event_cb(guider_ui.screen_photo_view, Photo_album::online_img_click, LV_EVENT_LONG_PRESSED,&photo_album);
         }
-        lv_obj_set_style_text_color(lv_obj_get_child(guider_ui.screen_photo_btn_web, 0),lv_color_white(),0);
-        lv_obj_set_style_text_color(lv_obj_get_child(guider_ui.screen_photo_btn_loop, 0),lv_color_white(), 0);
+        lv_obj_clear_flag(guider_ui.screen_photo_btn_web, LV_OBJ_FLAG_CHECKED);
+        lv_obj_clear_flag(guider_ui.screen_photo_btn_loop, LV_OBJ_FLAG_CHECKED);
     }else{
         photo_album.playLocal = true;
         if(carousel_timer != NULL)
@@ -80,7 +80,7 @@ void photo_win_loaded(SCREEN_LOAD_STAUS status){
 //上一张
 void Photo_album::img_left_btn(lv_event_t *e){
      auto& photo_album = Photo_album::GetInstance();
-    lv_obj_set_style_text_color(guider_ui.screen_photo_btn_loop_label, lv_color_white(),0);
+     lv_obj_clear_flag(guider_ui.screen_photo_btn_loop, LV_OBJ_FLAG_CHECKED);
     photo_album.nextBtnCheck = true;
     if(carousel_timer != NULL){
         lv_timer_del(carousel_timer);
@@ -100,7 +100,7 @@ void Photo_album::img_left_btn(lv_event_t *e){
 //下一张
 void Photo_album::img_right_btn(lv_event_t *e){
     
-    lv_obj_set_style_text_color(guider_ui.screen_photo_btn_loop_label, lv_color_white(),0);
+    lv_obj_clear_flag(guider_ui.screen_photo_btn_loop, LV_OBJ_FLAG_CHECKED);
     auto& photo_album = Photo_album::GetInstance();
     if(carousel_timer != NULL){
         lv_timer_del(carousel_timer);
@@ -131,10 +131,8 @@ void Photo_album::lv_timer_img_carousel(lv_timer_t *timer){
 void Photo_album::image_loop(lv_event_t *e){
      auto& photo_album = Photo_album::GetInstance();
     if(carousel_timer == NULL){
-        lv_obj_set_style_text_color(guider_ui.screen_photo_btn_loop_label, lv_color_make(0,0,255),0);
         carousel_timer = lv_timer_create(lv_timer_img_carousel, 5000,&photo_album);
     }else{
-        lv_obj_set_style_text_color(guider_ui.screen_photo_btn_loop_label, lv_color_white(),0);
         if(carousel_timer != NULL){  //播放本地图片
             lv_timer_del(carousel_timer);
             carousel_timer = NULL;
@@ -152,12 +150,10 @@ void Photo_album::img_play_choose(lv_event_t *e){
         photo_album.playLocal = false;
         photo_album.nextBtnCheck = true;
         photo_album.start_online();
-        lv_obj_set_style_text_color(guider_ui.screen_photo_btn_web_label, lv_color_make(0,0,255),0);
      }else{                         //播放本地文件
         photo_album.playLocal = true;
         photo_album.stop_online();
         photo_album.show_image();
-        lv_obj_set_style_text_color(guider_ui.screen_photo_btn_web_label, lv_color_white(),0);
      }
 }
 

@@ -1,5 +1,10 @@
 #include "setting.h"
 #include "ESP32_board.h"
+
+// music.cpp 提供的音量路由钩子：音乐页解码任务直连 codec，软件音量作用在解码 PCM 上
+extern bool music_apply_volume(void);
+extern bool music_is_active(void);
+#include "ESP32_board.h"
 #include <Preferences.h>
 #include "ai_vox_engine.h"
 #include "esp32-hal-ledc.h"
@@ -45,11 +50,11 @@ void Setting::Init() {
 //设置声音
 void volume_value_change(uint8_t volume) {
     auto& setting = Setting::GetInstance();
-    setting.SetVolume(static_cast<uint16_t>(volume)); 
+    setting.SetVolume(static_cast<uint16_t>(volume));
     setting.ApplyVolume(); //播放页里走软件音量，其余场景写硬件音量
-    // MP3/电台播放页里 AI_VOX 的 I2S 通道已被 disable_i2s() 停掉，
-    // 此时 playMp3() 写失败的通道会走 CLOGE + abort()，所以播放期间不出提示音
-    if (audio == nullptr) {
+    // 电台播放页里 AI_VOX 的 I2S 通道已被 disable_i2s() 停掉，音乐页里解码任务正独占 codec，
+    // 此时 playMp3() 与播放并发写/重开 codec 会失败甚至崩溃，所以播放期间不出提示音
+    if (audio == nullptr && !music_is_active()) {
         board.playMp3(kNotification0mp3, sizeof(kNotification0mp3));
     }
 }
@@ -82,7 +87,11 @@ void Setting::ApplyHardwareVolume() {
 }
 
 void Setting::ApplyVolume() {
-    // MP3/电台页面播放期间，codec 的 I2S 时钟与 GPIO 由 ESP32-audioI2S 接管：
+    // 音乐播放页：解码任务直连 AudioDeviceEs8311，软件音量作用在解码 PCM 上（music.cpp 提供）
+    if (music_apply_volume()) {
+        return;
+    }
+    // 电台页面播放期间，codec 的 I2S 时钟与 GPIO 由 ESP32-audioI2S 接管：
     // AI_VOX 的 I2S_NUM_1 已被 disable_i2s() 停掉，Audio 又把同一组引脚重配成 I2S_NUM_0，
     // 这时再走 esp_codec_dev_set_out_vol() 去写 ES8311（依赖 MCLK/I2S 时钟的 codec），
     // 实测会直接崩溃。所以播放期间只调库的软件音量，硬件音量等退出播放页后再补写。

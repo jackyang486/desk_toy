@@ -115,6 +115,7 @@ void setup_scr_screen_photo(lv_ui *ui)
     lv_obj_set_pos(ui->screen_photo_btn_loop, 48, 285);
     lv_obj_set_size(ui->screen_photo_btn_loop, 45, 34);
     lv_obj_add_flag(ui->screen_photo_btn_loop, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_add_flag(ui->screen_photo_btn_loop, LV_OBJ_FLAG_CHECKABLE);
     ui->screen_photo_btn_loop_label = lv_label_create(ui->screen_photo_btn_loop);
     lv_label_set_text(ui->screen_photo_btn_loop_label, "" LV_SYMBOL_REFRESH " ");
     lv_label_set_long_mode(ui->screen_photo_btn_loop_label, LV_LABEL_LONG_WRAP);
@@ -139,6 +140,7 @@ void setup_scr_screen_photo(lv_ui *ui)
     lv_obj_set_pos(ui->screen_photo_btn_web, 96, 285);
     lv_obj_set_size(ui->screen_photo_btn_web, 45, 35);
     lv_obj_add_flag(ui->screen_photo_btn_web, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_add_flag(ui->screen_photo_btn_web, LV_OBJ_FLAG_CHECKABLE);
     ui->screen_photo_btn_web_label = lv_label_create(ui->screen_photo_btn_web);
     lv_label_set_text(ui->screen_photo_btn_web_label, "" LV_SYMBOL_WIFI " ");
     lv_label_set_long_mode(ui->screen_photo_btn_web_label, LV_LABEL_LONG_WRAP);
