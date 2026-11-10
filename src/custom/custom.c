@@ -14,6 +14,8 @@
 #include <stdio.h>
 #include "lvgl.h"
 #include "custom.h"
+#include "confirm_dialog.h"
+#include "usb_disk.h"
 
 static screen_load *screen_load_method=NULL;
 static screen_load lv_screen_param;
@@ -118,6 +120,96 @@ void wifi_switch_cb(lv_event_t * e)
     lv_event_code_t code = lv_event_get_code(e);
     lv_obj_t * sw = lv_event_get_target_obj(e);
     start_connect_wifi();
+}
+
+/* ==================== U盘模式 ==================== */
+static lv_obj_t  *s_udisk_overlay = NULL;   /* 全屏遮罩，挡住所有页面入口 */
+static lv_timer_t *s_udisk_timer  = NULL;   /* 轮询电脑端"安全弹出" */
+
+static void udisk_overlay_destroy(void)
+{
+    if (s_udisk_timer) { lv_timer_delete(s_udisk_timer); s_udisk_timer = NULL; }
+    if (s_udisk_overlay) { lv_obj_delete(s_udisk_overlay); s_udisk_overlay = NULL; }
+}
+
+static void udisk_exit_btn_cb(lv_event_t *e)
+{
+    (void)e;
+    usb_disk_exit();
+    udisk_overlay_destroy();
+}
+
+/* 每 300ms 查一次：电脑端弹出后自动退出 */
+static void udisk_poll_timer_cb(lv_timer_t *timer)
+{
+    (void)timer;
+    if (usb_disk_take_eject_request()) {
+        usb_disk_exit();
+        udisk_overlay_destroy();
+    }
+}
+
+static void udisk_overlay_create(void)
+{
+    if (s_udisk_overlay) return;
+    s_udisk_overlay = lv_obj_create(lv_layer_top());
+    lv_obj_remove_style_all(s_udisk_overlay);
+    lv_obj_set_size(s_udisk_overlay, LV_PCT(100), LV_PCT(100));
+    lv_obj_set_style_bg_color(s_udisk_overlay, lv_color_black(), 0);
+    lv_obj_set_style_bg_opa(s_udisk_overlay, LV_OPA_80, 0);
+    lv_obj_clear_flag(s_udisk_overlay, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_add_flag(s_udisk_overlay, LV_OBJ_FLAG_CLICKABLE);   /* 吃掉所有触摸，挡住下层 */
+
+    lv_obj_t *title = lv_label_create(s_udisk_overlay);
+    lv_label_set_text(title, "U盘模式已开启");
+    lv_obj_set_style_text_font(title, &font_puhui_16_4, 0);
+    lv_obj_set_style_text_color(title, lv_color_white(), 0);
+    lv_obj_align(title, LV_ALIGN_TOP_MID, 0, 70);
+
+    lv_obj_t *hint = lv_label_create(s_udisk_overlay);
+    lv_label_set_text(hint, "电脑可像U盘一样\n读写SD卡中的文件\n\n安全弹出后自动退出");
+    lv_obj_set_style_text_font(hint, &font_puhui_16_4, 0);
+    lv_obj_set_style_text_color(hint, lv_color_hex(0xB0B0B0), 0);
+    lv_label_set_long_mode(hint, LV_LABEL_LONG_WRAP);
+    lv_obj_set_width(hint, 200);
+    lv_obj_set_style_text_align(hint, LV_TEXT_ALIGN_CENTER, 0);
+    lv_obj_align(hint, LV_ALIGN_CENTER, 0, -10);
+
+    lv_obj_t *btn = lv_btn_create(s_udisk_overlay);
+    lv_obj_set_size(btn, 120, 40);
+    lv_obj_align(btn, LV_ALIGN_BOTTOM_MID, 0, -40);
+    lv_obj_add_event_cb(btn, udisk_exit_btn_cb, LV_EVENT_CLICKED, NULL);
+
+    lv_obj_t *btn_label = lv_label_create(btn);
+    lv_label_set_text(btn_label, "退出U盘模式");
+    lv_obj_set_style_text_font(btn_label, &font_puhui_16_4, 0);
+    lv_obj_set_style_text_color(btn_label, lv_color_white(), 0);
+    lv_obj_center(btn_label);
+
+    s_udisk_timer = lv_timer_create(udisk_poll_timer_cb, 300, NULL);
+}
+
+static void udisk_confirm_cb(bool is_confirm, void *user_data)
+{
+    (void)user_data;
+    if (!is_confirm) return;
+    if (!usb_disk_enter()) {
+        show_toast(lv_layer_top(), "启动失败：音乐播放中或SD未挂载");
+        return;
+    }
+    udisk_overlay_create();
+}
+
+void udisk_entry_click_handler(lv_event_t *e)
+{
+    (void)e;
+    if (usb_disk_active()) return;
+    /* 只有主页允许进入：主页下无任何页面任务在访问 SD 卡 */
+    if (lv_screen_active() != guider_ui.screen_home) {
+        show_toast(lv_layer_top(), "请先回到主页");
+        return;
+    }
+    confirm_dialog_create(lv_layer_top(), "进入U盘模式？", "进入", "取消", udisk_confirm_cb, NULL);
 }
 
 void page_head_value_load(int8_t volume,int8_t brightness_,int8_t expire_time){
@@ -540,12 +632,34 @@ void create_head(){
     lv_obj_set_style_pad_left(  page_head.wifi_status_label, 0, LV_PART_MAIN|LV_STATE_DEFAULT);
     lv_obj_set_style_shadow_width(  page_head.wifi_status_label, 0, LV_PART_MAIN|LV_STATE_DEFAULT);
 
+     //Write codes screen_game_btn_usb_disk
+     lv_obj_t * btn_usb_disk = lv_button_create(cont_wifi);
+     lv_obj_set_pos(btn_usb_disk, 150, 2);
+     lv_obj_set_size(btn_usb_disk, 32, 32);
+     lv_obj_t *  btn_usb_disk_label = lv_label_create(btn_usb_disk);
+     lv_label_set_text(btn_usb_disk_label, "" LV_SYMBOL_USB " ");
+     lv_label_set_long_mode(btn_usb_disk_label, LV_LABEL_LONG_WRAP);
+     lv_obj_align(btn_usb_disk_label, LV_ALIGN_CENTER, 0, 0);
+     lv_obj_set_style_pad_all(btn_usb_disk, 0, LV_STATE_DEFAULT);
+     lv_obj_set_width(btn_usb_disk_label, LV_PCT(100));
+
+        //Write style for screen_game_btn_usb_disk, Part: LV_PART_MAIN, State: LV_STATE_DEFAULT.
+     lv_obj_set_style_bg_opa(btn_usb_disk, 0, LV_PART_MAIN|LV_STATE_DEFAULT);
+     lv_obj_set_style_border_width(btn_usb_disk, 0, LV_PART_MAIN|LV_STATE_DEFAULT);
+     lv_obj_set_style_radius(btn_usb_disk, 5, LV_PART_MAIN|LV_STATE_DEFAULT);
+     lv_obj_set_style_shadow_width(btn_usb_disk, 0, LV_PART_MAIN|LV_STATE_DEFAULT);
+     lv_obj_set_style_text_color(btn_usb_disk, lv_color_hex(0x000000), LV_PART_MAIN|LV_STATE_DEFAULT);
+     lv_obj_set_style_text_font(btn_usb_disk, &lv_font_montserratMedium_20, LV_PART_MAIN|LV_STATE_DEFAULT);
+     lv_obj_set_style_text_opa(btn_usb_disk, 255, LV_PART_MAIN|LV_STATE_DEFAULT);
+     lv_obj_set_style_text_align(btn_usb_disk, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN|LV_STATE_DEFAULT);
+
 
     lv_obj_add_event_cb(page_head.pageHeadCont,page_head_click_handler,LV_EVENT_CLICKED,NULL);   
     lv_obj_add_event_cb(page_head.time_silder,time_change_handler,LV_EVENT_VALUE_CHANGED,NULL);
     lv_obj_add_event_cb(page_head.sun_silder,sun_change_handler,LV_EVENT_VALUE_CHANGED,NULL);
     lv_obj_add_event_cb(page_head.volume_silder,volume_change_handler,LV_EVENT_VALUE_CHANGED,NULL);
     lv_obj_add_event_cb(page_head.wifi_switch,wifi_switch_cb,LV_EVENT_VALUE_CHANGED,NULL);
+    lv_obj_add_event_cb(btn_usb_disk,udisk_entry_click_handler,LV_EVENT_CLICKED,NULL);
 
 
 

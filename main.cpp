@@ -17,6 +17,7 @@
 #include "weather.h"
 #include "ESP32_board.h"
 #include "setting.h"
+#include "usb_disk.h"
 #include "radio.h"
 #include "lottie.h"
 #include "game.h"
@@ -304,6 +305,7 @@ void setup() {
   Serial.begin(115200);
   lvgl_user_init();    //lvgl初始化
   board.board_init();  //ESP32S3硬件初始化
+  usb_disk_init();     //U盘模式：开机注册 USB MSC 接口（平时隐藏介质，进入模式才暴露 SD 卡）
   auto& wifiConfig = wifi_config::GetInstance(); 
   wifiConfig.initial(); 
   ft6336u.begin(board.get_I2C_master_bus_handle());
