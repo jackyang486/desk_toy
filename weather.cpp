@@ -226,10 +226,7 @@ void weaterData(String *cityDZ,String *dataSK,String *dataFC)
 }
 
 void weather_screen_load(SCREEN_LOAD_STAUS status){
-   if(WiFi.status() != WL_CONNECTED){
-          show_toast(lv_scr_act(), "WIFI未连接!");
-          return;
-   }
+   
     if(status == LOADED){ 
        //字体初始化
       lv_label_set_text(guider_ui.screen_weather_label_week,"");
@@ -239,6 +236,8 @@ void weather_screen_load(SCREEN_LOAD_STAUS status){
       lv_obj_set_style_text_font(guider_ui.screen_weather_label_qulaity, &font_puhui_16_4, LV_PART_MAIN|LV_STATE_DEFAULT);
       if(WiFi.status() == WL_CONNECTED){  
         getCityWeater("101250101");
+      }else{
+          show_toast(lv_scr_act(), "WIFI未连接!");
       }
     }
 }

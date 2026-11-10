@@ -30,7 +30,7 @@ Setting& Setting::GetInstance() {
 
 Setting::Setting()
     : brightness_(DEFAULT_SCREEN_BRIGHTNESS),
-      volume_(50),
+      volume_(20),
       screen_timeout_ms_(DEFAULT_SCREEN_TIMEOUT_MS),
       online_img_url_base_(DEFAULT_ONLINE_IMG_URL_BASE){
       LoadSettings();
@@ -91,10 +91,6 @@ void Setting::ApplyVolume() {
     if (music_apply_volume()) {
         return;
     }
-    // 电台页面播放期间，codec 的 I2S 时钟与 GPIO 由 ESP32-audioI2S 接管：
-    // AI_VOX 的 I2S_NUM_1 已被 disable_i2s() 停掉，Audio 又把同一组引脚重配成 I2S_NUM_0，
-    // 这时再走 esp_codec_dev_set_out_vol() 去写 ES8311（依赖 MCLK/I2S 时钟的 codec），
-    // 实测会直接崩溃。所以播放期间只调库的软件音量，硬件音量等退出播放页后再补写。
     if (audio != nullptr) {
         ApplySoftwareVolume(audio);
         return;
