@@ -55,8 +55,9 @@ class Photo_album {
     void request_online_image(int32_t seed_delta);
     void scan_image(void);
     void show_image(void);
-    void start_online();
+    bool start_online();
     void stop_online();
+    void release_online_buffers();
     void pushImage(const char* path){
       image_files.push_back(path);
     }
@@ -73,6 +74,7 @@ class Photo_album {
       return image_files;
     }
     String getNextImagePath(){
+        if(image_files.empty()) return String();   // 空目录时 at() 会抛 out_of_range 直接 abort
         current_img++;
         if(current_img >= image_files.size())current_img = 0;
        return image_files.at(current_img);
