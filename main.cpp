@@ -308,8 +308,6 @@ void setup() {
   ft6336u.begin(board.get_I2C_master_bus_handle());
   Setting::GetInstance().Init();
   Radio::GetInstance().Init();
-  printf("2、Free INTERNAL heap: %lu\n", heap_caps_get_free_size(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT));
-  printf("2、Largest INTERNAL free block: %lu\n", heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT));
   const BaseType_t task_result = xTaskCreatePinnedToCore(
       ui_task,
       "uiTask",
@@ -325,11 +323,6 @@ void setup() {
 }
 
 // ============ LVGL 心跳归属交接 ============
-// lottie 动画（rlottie 解析 + 逐帧渲染）需要很大的栈，如果常驻在 ui_task 上，
-// 就必须把 ui_task 的栈一直开到很大，白白占用 internal DRAM。
-// 现在的做法：进入 lottie 页面时，由 lottie.cpp 创建一个专用任务接管 lv_timer_handler()，
-// ui_task 在此期间完全不进入 LVGL；退出页面时该任务自行退出并把心跳交还 ui_task。
-// 这样"大栈"只在 lottie 页面存在，退出后 40KB 栈连同 TCB 一起还给堆。
 volatile bool g_lvgl_external_active  = false;  // true：外部任务正在驱动 lv_timer_handler()
 
 static void ui_task(void *parameter) {

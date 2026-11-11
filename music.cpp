@@ -17,10 +17,6 @@
 #include "Ticker.h"
 #include <Adafruit_NeoPixel.h>
 #include <atomic>
-#define I2S_MCK   4
-#define I2S_BCK   5
-#define I2S_DOUT  8
-#define I2S_WS    7
 
 void check_list_item(uint16_t idx, bool check);
 #define LIST_VISIBLE_ITEMS 30 
