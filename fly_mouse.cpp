@@ -10,7 +10,10 @@ constexpr int kButtonStateRelease = 0;
 static lv_obj_t* statusLabel = nullptr;
 static lv_obj_t* g_ball_canvas = nullptr;
 static lv_draw_rect_dsc_t g_ball_draw_dsc;
-static lv_color_t g_canvas_buffer[240 * 240];
+// 原先这里有 g_canvas_buffer[240*240]（240x240x2 = 110KB 内部 SRAM）。
+// canvas 相关代码已整体注释掉，缓冲纯属死占用，直接删除；
+// 若以后恢复 canvas，请用 heap_caps_malloc(MALLOC_CAP_SPIRAM) 从 PSRAM 分配。
+
 static int16_t g_ball_x = 10;
 static int16_t g_ball_y = 10;
 

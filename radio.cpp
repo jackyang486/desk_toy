@@ -67,83 +67,83 @@ void Radio::ListItemClickHandler(lv_event_t* e) {
 }
 
 void Radio::PlayStation(size_t index) {
-    int size = sizeof(radio_infos)/sizeof(radio_infos[0]);
-    lv_obj_t* list = guider_ui.screen_radio_list_radio;
-    if(index == current_index_){
-        StopPlay();
-        return;
-    }
-    for (int i = 0; i < size; i++) {
-        lv_obj_t *item = lv_obj_get_child(list, i);
-        int real_idx = (int)lv_obj_get_user_data(item);
-        if (real_idx == (int)current_index_) {
-            lv_obj_set_style_bg_color(item, lv_color_hex(0xFFFFFF), LV_PART_MAIN | LV_STATE_DEFAULT);
-            lv_obj_t *icon = lv_obj_get_child(item, 0);
-            lv_img_set_src(icon, &_btn_play_RGB565A8_40x40);
-        }
-        if (real_idx == (int)index) {
-            lv_obj_set_style_bg_color(item, lv_color_hex(0xc6a2a2), LV_PART_MAIN | LV_STATE_DEFAULT);
-            lv_obj_t *icon = lv_obj_get_child(item, 0);
-            lv_img_set_src(icon, &_btn_pause_RGB565A8_40x40);
-        }
-    } 
-    StopPlay();
-    current_index_ = index;
-    if (audio) audio->connecttohost(radio_infos[index].url);
+    // int size = sizeof(radio_infos)/sizeof(radio_infos[0]);
+    // lv_obj_t* list = guider_ui.screen_radio_list_radio;
+    // if(index == current_index_){
+    //     StopPlay();
+    //     return;
+    // }
+    // for (int i = 0; i < size; i++) {
+    //     lv_obj_t *item = lv_obj_get_child(list, i);
+    //     int real_idx = (int)lv_obj_get_user_data(item);
+    //     if (real_idx == (int)current_index_) {
+    //         lv_obj_set_style_bg_color(item, lv_color_hex(0xFFFFFF), LV_PART_MAIN | LV_STATE_DEFAULT);
+    //         lv_obj_t *icon = lv_obj_get_child(item, 0);
+    //         lv_img_set_src(icon, &_btn_play_RGB565A8_40x40);
+    //     }
+    //     if (real_idx == (int)index) {
+    //         lv_obj_set_style_bg_color(item, lv_color_hex(0xc6a2a2), LV_PART_MAIN | LV_STATE_DEFAULT);
+    //         lv_obj_t *icon = lv_obj_get_child(item, 0);
+    //         lv_img_set_src(icon, &_btn_pause_RGB565A8_40x40);
+    //     }
+    // } 
+    // StopPlay();
+    // current_index_ = index;
+    // if (audio) audio->connecttohost(radio_infos[index].url);
     
 }
 
 
  void Radio::radio_screen_load(SCREEN_LOAD_STAUS status){
     if (status == LOADED) {
-        if(WiFi.status() != WL_CONNECTED){
-          show_toast(lv_scr_act(), "WIFI未连接!");
-          return;
-        }
-        playing_ = true; 
-        FillListUI();
-        // 先（codec 还归 AI_VOX 时）把硬件音量拉满，响度只由软件音量决定
-        Setting::GetInstance().PreparePlaybackVolume();
-        if (auto dev = board.getAudioDeviceEs8311()) {
-                dev->disable_i2s();
-        }
-        // 每次进入页面都创建全新的 Audio 对象，退出时 delete 销毁
-        audio = new Audio();
-        audio->setTone(0, 0, 0);                   // 触发计算 0dB 平坦响应系数，避免 IIR coeffs 全 0 导致静音
-        audio->settings.IIR_FILTER = false;        // 绕过 biquad IIR（旧 esp-dsp 与新版库系数约定不兼容造成静音）
-        audio->settings.SPECTRUM = true;           // 使能频谱分析（evt_spectrum，新版库默认 false）
-        Setting::GetInstance().ApplySoftwareVolume(audio);
-        audio->setPinout(I2S_BCK, I2S_WS, I2S_DOUT, I2S_MCK);
-            // 创建独立任务持续调用 audio->loop() 处理网络音频流
-        xTaskCreatePinnedToCore([](void *arg){
-                Radio* self = static_cast<Radio*>(arg);
-                while (self->playing_) {
-                    audio->loop();
-                    vTaskDelay(1);
-                }
-                vTaskDelete(NULL);
-        },"radio_audio_task",1024 * 10,this,2 | portPRIVILEGE_BIT,NULL,1);
+        // if(WiFi.status() != WL_CONNECTED){
+        //   show_toast(lv_scr_act(), "WIFI未连接!");
+        //   return;
+        // }
+        // playing_ = true; 
+        // FillListUI();
+        // // 先（codec 还归 AI_VOX 时）把硬件音量拉满，响度只由软件音量决定
+        // Setting::GetInstance().PreparePlaybackVolume();
+        // if (auto dev = board.getAudioDeviceEs8311()) {
+        //         dev->disable_i2s();
+        // }
+        // // 每次进入页面都创建全新的 Audio 对象，退出时 delete 销毁
+        // audio = new Audio();
+        // audio->setTone(0, 0, 0);                   // 触发计算 0dB 平坦响应系数，避免 IIR coeffs 全 0 导致静音
+        // audio->settings.IIR_FILTER = false;        // 绕过 biquad IIR（旧 esp-dsp 与新版库系数约定不兼容造成静音）
+        // audio->settings.SPECTRUM = true;           // 使能频谱分析（evt_spectrum，新版库默认 false）
+        // Setting::GetInstance().ApplySoftwareVolume(audio);
+        // audio->setPinout(I2S_BCK, I2S_WS, I2S_DOUT, I2S_MCK);
+        //     // 创建独立任务持续调用 audio->loop() 处理网络音频流
+        // xTaskCreatePinnedToCore([](void *arg){
+        //         Radio* self = static_cast<Radio*>(arg);
+        //         while (self->playing_) {
+        //             audio->loop();
+        //             vTaskDelay(1);
+        //         }
+        //         vTaskDelete(NULL);
+        // },"radio_audio_task",1024 * 10,this,2 | portPRIVILEGE_BIT,NULL,1);
     } else {
-        StopPlay();
-        playing_ = false; 
-        // 销毁 Audio 对象：析构函数会 stopSong + disable/del I2S_NUM_0 通道 + stopAudioTask
-        delete audio;
-        audio = nullptr;
-        // 把 codec 的 I2S 引脚让渡回 AI_VOX(I2S_NUM_1)，保证退出后通知音/语音可用
-        if (auto dev = board.getAudioDeviceEs8311()) {
-            dev->reconfigure_gpio();
-        }
-        // 播放页里调过的音量只落在 Audio 的软件音量上，这里补写回 ES8311 硬件音量
-        Setting::GetInstance().FlushVolumeToHardware();
-        if (guider_ui.screen_radio_list_radio) {
-            lv_obj_clean(guider_ui.screen_radio_list_radio);
-        }
+        // StopPlay();
+        // playing_ = false; 
+        // // 销毁 Audio 对象：析构函数会 stopSong + disable/del I2S_NUM_0 通道 + stopAudioTask
+        // delete audio;
+        // audio = nullptr;
+        // // 把 codec 的 I2S 引脚让渡回 AI_VOX(I2S_NUM_1)，保证退出后通知音/语音可用
+        // if (auto dev = board.getAudioDeviceEs8311()) {
+        //     dev->reconfigure_gpio();
+        // }
+        // // 播放页里调过的音量只落在 Audio 的软件音量上，这里补写回 ES8311 硬件音量
+        // Setting::GetInstance().FlushVolumeToHardware();
+        // if (guider_ui.screen_radio_list_radio) {
+        //     lv_obj_clean(guider_ui.screen_radio_list_radio);
+        // }
     }
  }
 
 void Radio::StopPlay() {
     vTaskDelay(pdMS_TO_TICKS(50));  // 等待任务结束
-    if (audio) audio->stopSong();
+    //if (audio) audio->stopSong();
 }
 
 void radio_win_load(SCREEN_LOAD_STAUS status) {

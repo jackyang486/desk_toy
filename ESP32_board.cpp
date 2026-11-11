@@ -1,6 +1,7 @@
 #include <algorithm>
 #include <cctype>
 #include "ESP32_board.h"
+#include <WiFi.h>      // GetWifiList()/ConnectNetWork() 直接用了 WiFi 对象，此前一直靠别的头文件间接带入
 #include "driver/i2c_master.h"
 #include "driver/i2s_std.h"
 #include "driver/i2s.h"
@@ -13,7 +14,6 @@
 static const char *TAG = "BOARD";
 
 Board board;
-Audio* audio = nullptr;
 
 void Board::init_sd_card()
 {

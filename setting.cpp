@@ -52,9 +52,7 @@ void volume_value_change(uint8_t volume) {
     auto& setting = Setting::GetInstance();
     setting.SetVolume(static_cast<uint16_t>(volume));
     setting.ApplyVolume(); //播放页里走软件音量，其余场景写硬件音量
-    // 电台播放页里 AI_VOX 的 I2S 通道已被 disable_i2s() 停掉，音乐页里解码任务正独占 codec，
-    // 此时 playMp3() 与播放并发写/重开 codec 会失败甚至崩溃，所以播放期间不出提示音
-    if (audio == nullptr && !music_is_active()) {
+    if (!music_is_active()) {
         board.playMp3(kNotification0mp3, sizeof(kNotification0mp3));
     }
 }
@@ -91,10 +89,6 @@ void Setting::ApplyVolume() {
     if (music_apply_volume()) {
         return;
     }
-    if (audio != nullptr) {
-        ApplySoftwareVolume(audio);
-        return;
-    }
     ApplyHardwareVolume();
 }
 
@@ -107,17 +101,8 @@ void Setting::PreparePlaybackVolume() {
     hw_volume_dirty_ = true;   // 退出播放页时按 volume_ 恢复硬件音量
 }
 
-void Setting::ApplySoftwareVolume(Audio* player) {
-    if (player == nullptr) return;
-    hw_volume_dirty_ = true;
-    uint8_t steps = player->getVolumeSteps();
-    if (steps == 0) steps = 21;
-    player->setVolume(static_cast<uint8_t>(volume_ * steps / 100));
-}
-
 // 退出播放页（audio 已 delete、reconfigure_gpio() 已把 codec 让渡回 AI_VOX）后调用
 void Setting::FlushVolumeToHardware() {
-    if (audio != nullptr) return;   // 还在播放页，硬件仍归另一个库管
     if (!hw_volume_dirty_) return;
     ApplyHardwareVolume();
 }
@@ -177,7 +162,7 @@ void Setting::SaveSettings() {
 void Setting::LoadSettings() {
     prefs_.begin(SETTINGS_NAMESPACE, true);
     brightness_ = prefs_.getUChar(KEY_BRIGHTNESS, DEFAULT_SCREEN_BRIGHTNESS);
-    volume_ = prefs_.getUShort(KEY_VOLUME, 80);
+    volume_ = prefs_.getUShort(KEY_VOLUME, 20);
     screen_timeout_ms_ = prefs_.getUInt(KEY_SCREEN_TIMEOUT, DEFAULT_SCREEN_TIMEOUT_MS);
     prefs_.end();
 }

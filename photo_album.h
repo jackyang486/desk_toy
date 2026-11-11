@@ -67,6 +67,13 @@ class Photo_album {
     void setCurrentImg(uint8_t currentImg){
        current_img = currentImg;
     };
+    /* 退出相册页时释放文件名列表（内部堆），下次进页重新扫描 */
+    void release_file_list(){
+        image_files.clear();
+        image_files.shrink_to_fit();
+        current_img = 0;
+        hasInitial = false;
+    };
     int getImageFilesSize(){
        return  image_files.size();
     };

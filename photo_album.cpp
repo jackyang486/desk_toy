@@ -37,6 +37,7 @@ void Photo_album::show_image()
         lv_image_set_src(guider_ui.screen_photo_view, NULL);
         return;
     }
+    if(image_files.empty()) return;   // 空列表时 at() 会抛 out_of_range 直接重启
     if(current_img >= image_files.size()) current_img = 0;
      // 构建完整路径（静态缓冲，LVGL 后续绘制阶段还会用到这个指针）
     lv_snprintf(lv_img_path, sizeof(lv_img_path), "%s/%s", basePath, image_files.at(current_img).c_str());
@@ -65,6 +66,8 @@ void photo_win_loaded(SCREEN_LOAD_STAUS status){
         lv_obj_clear_state(guider_ui.screen_photo_btn_loop, LV_STATE_CHECKED);
     }else{
         photo_album.playLocal = true;
+        // 目录列表里几十个 String 占的是内部堆，退出页面就放掉，别一直攥着
+        photo_album.release_file_list();
         if(carousel_timer != NULL)
         { 
             lv_timer_del(carousel_timer);
@@ -163,8 +166,9 @@ void Photo_album::img_play_choose(lv_event_t *e){
 
 bool Photo_album::allocate_online_buf(ImgBuf_t& buf) {
     if (buf.jpg_buf != nullptr) return true;
+    // 只许吃 PSRAM，绝不回退 malloc()：内部 SRAM 要留给 SSL 握手等大块需求，
+    // 100KB 的图片缓冲占掉内部堆等于谋杀 chat_robot 的 websocket 连接
     buf.jpg_buf = static_cast<uint8_t*>(heap_caps_malloc(ONLINE_JPG_BUF_SIZE, MALLOC_CAP_SPIRAM));
-    if (buf.jpg_buf == nullptr) buf.jpg_buf = static_cast<uint8_t*>(malloc(ONLINE_JPG_BUF_SIZE));
     if (buf.jpg_buf == nullptr) return false;
     buf.jpg_len = 0;
     buf.valid = false;

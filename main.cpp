@@ -82,7 +82,6 @@ static time_t getNtpTime(void)
     vTaskDelay(pdMS_TO_TICKS(2));   // 原来是完全忙等，会独占一个核
     int size = ntpUdp.parsePacket();
     if (size >= NTP_PACKET_SIZE) {
-      Serial.println("Receive NTP Response");
       ntpUdp.read(ntpPacketBuffer, NTP_PACKET_SIZE);
       unsigned long secsSince1900;
       // convert four bytes starting at location 40 to a long integer
@@ -93,7 +92,6 @@ static time_t getNtpTime(void)
       return secsSince1900 - 2208988800UL + timeZone * SECS_PER_HOUR;
     }
   }
-  Serial.println("No NTP Response :-(");
   return 0;  // 无法获取时间时返回 0
 }
 
@@ -107,7 +105,6 @@ static void ntp_sync_task(void *param) {
         if (t != 0) {
           setTime(t);
           ntp_time_ready = true;
-          Serial.println("NTP time synced");
         }
       }
     }
@@ -311,11 +308,12 @@ void setup() {
   ft6336u.begin(board.get_I2C_master_bus_handle());
   Setting::GetInstance().Init();
   Radio::GetInstance().Init();
-
+  printf("2、Free INTERNAL heap: %lu\n", heap_caps_get_free_size(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT));
+  printf("2、Largest INTERNAL free block: %lu\n", heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT));
   const BaseType_t task_result = xTaskCreatePinnedToCore(
       ui_task,
       "uiTask",
-      20 * 1024,
+      15 * 1024,
       nullptr,
       1,
       &ui_task_handle,
@@ -346,8 +344,6 @@ static void ui_task(void *parameter) {
     }
 }
 
-// 顶栏时间刷新：运行在 LVGL 定时器里（即 ui_task 线程），
-// 避免在 Arduino loop() 线程里跨线程调用 lv_label_set_text()。
 static void time_update_cb(lv_timer_t *t) {
     (void)t;
     // 顶栏 WiFi 状态（图标/文字）跟着这个定时器一起刷，省掉一个常驻 LVGL 定时器
@@ -375,19 +371,7 @@ static void time_update_cb(lv_timer_t *t) {
     }
 }
 
-// 设为 1 可周期性打印 ui_task 栈剩余量：lottie 交给独立任务后，
-// 可据此把 setup() 里 ui_task 的 20*1024 调到一个安全的小值
-#define UI_STACK_DEBUG 1
-
 void loop() {
-#if UI_STACK_DEBUG
-    static uint32_t last_stack_log = 0;
-    if (ui_task_handle != NULL && (millis() - last_stack_log > 5000)) {
-        last_stack_log = millis();
-        Serial.printf("[loop] uiTask stack free=%lu bytes\n",
-                      (unsigned long)(uxTaskGetStackHighWaterMark(ui_task_handle) * sizeof(StackType_t)));
-    }
-#endif
       static bool game_was_active = false;
       if (game_is_active()) {
           game_was_active = true;

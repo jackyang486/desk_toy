@@ -1,7 +1,6 @@
 #ifndef __ESP32_BOARD_H_
 #define __ESP32_BOARD_H_
 #include <arduino.h>
-#include "Audio.h"
 #include "driver/i2c_master.h"
 #include <vector>
 #include "ai_vox_engine.h"
@@ -87,6 +86,4 @@ class Board{
     void onWifiListScaned(std::function<void(const std::vector<WifiInfo>& wifi_list)> callback);
 };
 extern Board board;
-// 改为指针：进入音乐/电台页面时 new，退出时 delete，确保 I2S 通道与音频任务状态每次全新
-extern Audio* audio;
 #endif

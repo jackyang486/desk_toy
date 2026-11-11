@@ -386,7 +386,7 @@ void game_process_pending(void)
         printf("[GAME] Starting %s\n", rom_path);
         my_lcd.setRotation(1);
         my_lcd.fillScreen(TFT_BLACK);
-        nofrendo_run_rom(rom_path);
+        //nofrendo_run_rom(rom_path);
         my_lcd.setRotation(0);
     }
     requested_game = "";

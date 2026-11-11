@@ -1,4 +1,5 @@
 #include "music_audio.h"
+#include "esp_heap_caps.h"
 
 #include <atomic>
 #include <memory>
@@ -28,10 +29,14 @@ static volatile uint32_t g_dur_ms = 0;            // 时长估算 ms（任务推
 static volatile uint8_t  g_volume = 100;          // 0~100 软件音量
 static std::atomic<uint8_t> g_level{0};           // 响度 0~255（任务写、LVGL 线程读）
 static volatile uint32_t g_level_ms = 0;          // 最近一次更新响度的时刻
-static uint8_t g_inbuf[DEC_INBUF_SIZE];           // 静态缓冲：不参与堆借还
-static uint8_t g_outbuf[DEC_OUTBUF_SIZE];
-static StackType_t  g_stack[DEC_TASK_STACK];      // 静态任务栈：根治大块借还碎片
-static StaticTask_t g_task_buf;
+// 三块大缓冲运行时从 PSRAM 一次性惰性分配、永不释放（不产生碎片）：
+// MP3 解码的输入/输出/任务栈对访存速度不敏感，放 PSRAM 归还 ~18KB 内部 SRAM。
+// 注：不能用 EXT_RAM_BSS_ATTR——本环境 sdkconfig 未开
+// CONFIG_SPIRAM_ALLOW_BSS_SEG_EXTERNAL_MEMORY，linker 也没有 .ext_ram.bss 段。
+static uint8_t    *g_inbuf  = nullptr;   // DEC_INBUF_SIZE
+static uint8_t    *g_outbuf = nullptr;   // DEC_OUTBUF_SIZE
+static StackType_t *g_stack = nullptr;   // DEC_TASK_STACK（任务栈，已开 ALLOW_STACK_EXTERNAL）
+static StaticTask_t g_task_buf;          // TCB 很小，留内部
 static TaskHandle_t g_task_handle = NULL;
 
 MusicAudio music_audio;
@@ -223,6 +228,23 @@ static void decode_task(void *pvParam) {
 
 bool MusicAudio::begin() {
     if (g_run) return true;
+    // PSRAM 惰性分配：成功后常驻不释放，后续 begin() 直接复用，无碎片风险
+    if (g_inbuf == nullptr) {
+        g_inbuf = static_cast<uint8_t*>(heap_caps_malloc(DEC_INBUF_SIZE, MALLOC_CAP_SPIRAM));
+    }
+    if (g_outbuf == nullptr) {
+        g_outbuf = static_cast<uint8_t*>(heap_caps_malloc(DEC_OUTBUF_SIZE, MALLOC_CAP_SPIRAM));
+    }
+    if (g_stack == nullptr) {
+        // 16 字节对齐，满足 FreeRTOS 静态任务栈的对齐要求；栈在 PSRAM 需要的
+        // CONFIG_SPIRAM_ALLOW_STACK_EXTERNAL_MEMORY 本环境已开启
+        g_stack = static_cast<StackType_t*>(heap_caps_aligned_alloc(16,
+            DEC_TASK_STACK * sizeof(StackType_t), MALLOC_CAP_SPIRAM));
+    }
+    if (g_inbuf == nullptr || g_outbuf == nullptr || g_stack == nullptr) {
+        printf("[music_audio] PSRAM alloc failed\n");
+        return false;
+    }
     if (g_cmd_lock == NULL) g_cmd_lock = xSemaphoreCreateMutex();
     if (g_cmd_lock == NULL) return false;
     g_cmd = PCMD_IDLE;

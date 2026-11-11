@@ -377,6 +377,8 @@ void chat_init() {
 
   // 表情切换定时器：周期扫描待切换表情（本函数运行在 LVGL 线程/加载回调里，创建安全）
   lv_timer_create(emotion_switch_timer_cb, 100, NULL);
+    printf("Free INTERNAL heap: %lu\n", heap_caps_get_free_size(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT));
+    printf("Largest INTERNAL free block: %lu\n", heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT));
 
 }
 
@@ -441,7 +443,6 @@ void chat_loop() {
         }
       }
     } else if (auto emotion_event = std::get_if<ai_vox::EmotionEvent>(&event)) {
-      printf("emotion: %s\n", emotion_event->emotion.c_str());
       // 不在 LVGL 线程外操作 UI：只记录待切换表情，由 emotion_switch_timer_cb 应用
       g_pending_emotion_valid = false;
       strncpy(g_pending_emotion, emotion_event->emotion.c_str(), sizeof(g_pending_emotion) - 1);
@@ -450,25 +451,21 @@ void chat_loop() {
     } else if (auto chat_message_event = std::get_if<ai_vox::ChatMessageEvent>(&event)) {
       switch (chat_message_event->role) {
         case ai_vox::ChatRole::kAssistant: {
-          printf("role: assistant, content: %s\n", chat_message_event->content.c_str());
           lv_label_set_text(guider_ui.screen_robot_label_msg,chat_message_event->content.c_str());
           break;
         }
         case ai_vox::ChatRole::kUser: {
-          printf("role: user, content: %s\n", chat_message_event->content.c_str());
           lv_label_set_text(guider_ui.screen_robot_label_msg,chat_message_event->content.c_str());
           break;
         }
       }
     } else if (auto mcp_tool_call_event = std::get_if<ai_vox::McpToolCallEvent>(&event)) {
-      printf("on mcp tool call: %s\n", mcp_tool_call_event->ToString().c_str());
       if ("self.audio_speaker.set_volume" == mcp_tool_call_event->name) {
         const auto volume_ptr = mcp_tool_call_event->param<int64_t>("volume");
         if (volume_ptr != nullptr) {
           auto& setting = Setting::GetInstance();
           uint8_t vol = static_cast<uint8_t>(std::max(0, std::min(100, (int)*volume_ptr)));
-          //volume_value_change(vol);
-          printf("on mcp tool call: self.audio_speaker.set_volume, volume: %d\n", vol);
+          volume_value_change(vol);
           engine.SendMcpCallResponse(mcp_tool_call_event->id, true);
         } else {
           engine.SendMcpCallError(mcp_tool_call_event->id, "Missing valid argument: volume");
@@ -476,12 +473,10 @@ void chat_loop() {
       } else if ("self.audio_speaker.get_volume" == mcp_tool_call_event->name) {
         auto& setting = Setting::GetInstance();
         uint16_t volume = setting.GetVolume();
-        printf("on mcp tool call: self.audio_speaker.get_volume, volume: %d\n", volume);
         engine.SendMcpCallResponse(mcp_tool_call_event->id, volume);
       } else if ("self.led.set" == mcp_tool_call_event->name) {
         const auto state_ptr = mcp_tool_call_event->param<bool>("state");
         if (state_ptr != nullptr) {
-          printf("on mcp tool call: self.led.set, state: %d\n", *state_ptr);
           digitalWrite(kLedPin, *state_ptr);
           engine.SendMcpCallResponse(mcp_tool_call_event->id, true);
         } else {
@@ -489,15 +484,13 @@ void chat_loop() {
         }
       } else if ("self.led.get" == mcp_tool_call_event->name) {
         const auto state = digitalRead(kLedPin) == HIGH;
-        printf("on mcp tool call: self.led.get, state: %d\n", state);
         engine.SendMcpCallResponse(mcp_tool_call_event->id, state);
       } else if ("self.screen.set_brightness" == mcp_tool_call_event->name) {
         const auto brightness_ptr = mcp_tool_call_event->param<int64_t>("brightness");
         if (brightness_ptr != nullptr) {
           int percent = std::max(0, std::min(100, (int)*brightness_ptr));
           auto& setting = Setting::GetInstance();
-          //sun_value_change(percent);
-          printf("on mcp tool call: self.screen.set_brightness, percent: %d", percent);
+          sun_value_change(percent);
           engine.SendMcpCallResponse(mcp_tool_call_event->id, true);
         } else {
           engine.SendMcpCallError(mcp_tool_call_event->id, "Missing valid argument: brightness");
@@ -505,14 +498,12 @@ void chat_loop() {
       } else if ("self.screen.get_brightness" == mcp_tool_call_event->name) {
         auto& setting = Setting::GetInstance();
         int percent = setting.GetScreenBrightness() * 100 / 255;
-        printf("on mcp tool call: self.screen.get_brightness, percent: %d\n", percent);
         engine.SendMcpCallResponse(mcp_tool_call_event->id, percent);
       } else if ("self.screen.set_timeout" == mcp_tool_call_event->name) {
         const auto minutes_ptr = mcp_tool_call_event->param<int64_t>("minutes");
         if (minutes_ptr != nullptr) {
           int minutes = static_cast<int>(*minutes_ptr);
-          //time_value_change(minutes);
-          printf("on mcp tool call: self.screen.set_timeout, minutes: %d\n", minutes);
+          time_value_change(minutes);
           engine.SendMcpCallResponse(mcp_tool_call_event->id, true);
         } else {
           engine.SendMcpCallError(mcp_tool_call_event->id, "Missing valid argument: minutes");
@@ -520,7 +511,6 @@ void chat_loop() {
       } else if ("self.screen.get_timeout" == mcp_tool_call_event->name) {
         auto& setting = Setting::GetInstance();
         int minutes = static_cast<int>(setting.GetScreenTimeout() / 60000);
-        printf("on mcp tool call: self.screen.get_timeout, minutes: %d\n", minutes);
         engine.SendMcpCallResponse(mcp_tool_call_event->id, minutes);
       }
     }
@@ -551,12 +541,12 @@ void robot_win_load(SCREEN_LOAD_STAUS loadstatus){
         xTaskCreatePinnedToCore(
                         xiaozhi_chat_task,
                         "xiaozhi_chat_task",
-                        1024 * 20,
+                        1024 * 10,
                         NULL,
                         2 | portPRIVILEGE_BIT,
                         NULL,
                         xCoreID
-          );    
+          );
    }else{
         screen_loaded = false;
    }

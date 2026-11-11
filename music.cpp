@@ -78,13 +78,7 @@ static const struct {
 static void lyric_page_create(void) {
     if (g_lyric_cont != NULL) return;
     lv_obj_t *parent = guider_ui.screen_music_cont_cover;
-    if (parent == NULL) return;
-
     g_lyric_cont = lv_obj_create(parent);
-    if (g_lyric_cont == NULL) {          // LVGL 内存池耗尽时会返回 NULL，不判空会直接崩
-        printf("[lyric] create container fail\n");
-        return;
-    }
     lv_obj_set_pos(g_lyric_cont, 0, 0);
     lv_obj_set_size(g_lyric_cont, LYRIC_ROW_W, LYRIC_ROW_H);
     lv_obj_set_scrollbar_mode(g_lyric_cont, LV_SCROLLBAR_MODE_OFF);
@@ -98,10 +92,6 @@ static void lyric_page_create(void) {
 
     for (int i = 0; i < LYRIC_ROWS; i++) {
         lv_obj_t *l = lv_label_create(g_lyric_cont);
-        if (l == NULL) {
-            printf("[lyric] create row %d fail\n", i);
-            break;
-        }
         lv_label_set_text(l, "");
         lv_label_set_long_mode(l, LV_LABEL_LONG_CLIP);   // 歌词超宽时裁掉，不撑破容器
         lv_obj_set_pos(l, 0, kLyricRowStyle[i].y);
@@ -468,8 +458,6 @@ static void lv_timer_refresh_time(lv_timer_t *timer)
     }
     // 处理播放引擎上抛的跨线程事件（EOF 切歌）：只在文件真正解码完（或打不开）时置位
     if (music_audio.take_eof()) {
-        printf("[eof] 切歌：已播 %lu s / 总时长 %u s\n",
-               (unsigned long)g_last_curr_sec, (unsigned)total_sec);
         handle_eof_next();
     }
 }
@@ -713,11 +701,8 @@ void Music_player::music_loop(SCREEN_LOAD_STAUS playerLoadStatus){
         }
         vTaskDelay(pdMS_TO_TICKS(50));
         lyric_page_reset();             // 整页歌词可能正显示着，先退回封面模式
-        // 整个销毁标签对象并释放封面缓冲：clear() 只清内容，vector 元素数组容量和
-        // String 缓冲（合计 2~6KB，散在主区空闲洞里）不会归还，delete 才能全部还给堆。
         musicTag.release_cover(guider_ui.screen_music_album_img);
         musicTag.unload();
-        // 3) 停掉播放引擎（栈/缓冲全静态，无堆需要回收），顺带把 codec 恢复成默认输出配置
         music_audio.end();
         rgb_led_off();
         // 播放页里调过的音量只落在解码 PCM 上，这里补写回 ES8311 硬件音量
