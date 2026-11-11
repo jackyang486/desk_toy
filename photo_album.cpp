@@ -37,14 +37,18 @@ void Photo_album::show_image()
         lv_image_set_src(guider_ui.screen_photo_view, NULL);
         return;
     }
-    if(image_files.empty()) return;   // 空列表时 at() 会抛 out_of_range 直接重启
+    if(image_files.empty()) return;   // 空列表保护
     if(current_img >= image_files.size()) current_img = 0;
      // 构建完整路径（静态缓冲，LVGL 后续绘制阶段还会用到这个指针）
-    lv_snprintf(lv_img_path, sizeof(lv_img_path), "%s/%s", basePath, image_files.at(current_img).c_str());
+    lv_snprintf(lv_img_path, sizeof(lv_img_path), "%s/%s", basePath, image_files.at(current_img));
     lv_image_set_src(guider_ui.screen_photo_view, lv_img_path);
 }
+// scanDirEach 回调：文件名直接拷进 PSRAM 路径池，不产生内部堆碎片
+static bool photo_path_sink(void *ctx, const char *name) {
+    return static_cast<MusicPathList *>(ctx)->push(name);
+}
 void Photo_album::scan_image(){
-     board.scanDir(basePath,&image_files,IMG_TYPE);
+     board.scanDirEach(basePath, photo_path_sink, &image_files, IMG_TYPE);
      show_image();
 }
 //页面加载
@@ -121,7 +125,7 @@ void Photo_album::lv_timer_img_carousel(lv_timer_t *timer){
     if (self->playLocal) {        //本地图片轮播
         if (self->image_files.empty()) return;   //目录为空时不要走 at()，会 abort
       // 构建完整路径（静态缓冲）
-        lv_snprintf(lv_img_path, sizeof(lv_img_path), "%s/%s", basePath, self->getNextImagePath().c_str());
+        lv_snprintf(lv_img_path, sizeof(lv_img_path), "%s/%s", basePath, self->getNextImagePath());
         if (lv_img_path[0] == '\0') return;
         lv_image_set_src(guider_ui.screen_photo_view, lv_img_path);
     } else {
@@ -455,7 +459,7 @@ void Photo_album::del_dialog_callback(bool is_confirm, void *user_data)
     // 按名字重新定位：弹窗期间可能已经翻页/重新扫描过，用索引会删错文件
     int index = -1;
     for (size_t i = 0; i < photo_album.image_files.size(); i++) {
-        if (photo_album.image_files[i] == name) {
+        if (strcmp(photo_album.image_files.at(i), name.c_str()) == 0) {
             index = static_cast<int>(i);
             break;
         }
@@ -471,7 +475,7 @@ void Photo_album::del_dialog_callback(bool is_confirm, void *user_data)
         show_toast(lv_scr_act(),"删除失败");
         return;
     }
-    photo_album.image_files.erase(photo_album.image_files.begin() + index);
+    photo_album.image_files.remove_at(static_cast<size_t>(index));
     if (photo_album.current_img >= photo_album.image_files.size()) {
         photo_album.current_img = 0;
     }

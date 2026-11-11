@@ -19,7 +19,11 @@ static constexpr char kGameVfsDirectory[] = "/sdcard/game";
 static constexpr int kSwipeThreshold = 20;
 static constexpr size_t kListItemCount = 20;
 static constexpr int kListItemHeight = 35;
-static std::vector<String> game_files;
+static MusicPathList game_files;   // 游戏路径放 PSRAM 池，不再用 vector<String> 切碎内部堆
+// scanDirEach 回调：文件名直接拷进 PSRAM 路径池，不产生内部堆碎片
+static bool game_path_sink(void *ctx, const char *name) {
+    return static_cast<MusicPathList *>(ctx)->push(name);
+}
 static String requested_game;
 static std::atomic<bool> game_active{false};
 static bool game_start_pending = false;
@@ -281,7 +285,7 @@ static void game_list_item_clicked(lv_event_t *event)
         return;
     }
 
-    requested_game = game_files[index];
+    requested_game = game_files.at(index);
     game_start_pending = true;
     game_active.store(true);
 }
@@ -294,7 +298,7 @@ static void fill_game_list()
     if (lv_obj_get_child_count(list) != item_count) {
         lv_obj_clean(list);
         for (size_t i = 0; i < item_count; ++i) {
-            lv_obj_t *button = lv_list_add_btn(list, nullptr, game_files[i].c_str());
+            lv_obj_t *button = lv_list_add_btn(list, nullptr, game_files.at(i));
             if (!button) {
                 continue;
             }
@@ -315,7 +319,7 @@ static void fill_game_list()
         lv_obj_set_user_data(button, reinterpret_cast<void *>(static_cast<uintptr_t>(list_start_index + i)));
         if (label) {
             lv_obj_set_style_text_font(label, &font_puhui_16_4, LV_PART_MAIN | LV_STATE_DEFAULT);
-            lv_label_set_text(label, game_files[list_start_index + i].c_str());
+            lv_label_set_text(label, game_files.at(list_start_index + i));
         }
     }
 }
@@ -386,7 +390,7 @@ void game_process_pending(void)
         printf("[GAME] Starting %s\n", rom_path);
         my_lcd.setRotation(1);
         my_lcd.fillScreen(TFT_BLACK);
-        //nofrendo_run_rom(rom_path);
+        nofrendo_run_rom(rom_path);
         my_lcd.setRotation(0);
     }
     requested_game = "";
@@ -423,7 +427,7 @@ void game_screen_load(SCREEN_LOAD_STAUS status)
     //game_process_pending();
     game_files.clear();
     list_start_index = 0;
-    board.scanDir(game_directory, &game_files, NES_TYPE);
+    board.scanDirEach(game_directory, game_path_sink, &game_files, NES_TYPE);
     lv_obj_clean(guider_ui.screen_game_list_game);
     if (!list_swipe_registered) {
         lv_obj_add_event_cb(guider_ui.screen_game_list_game, game_list_swipe_event_handler, LV_EVENT_ALL, nullptr);

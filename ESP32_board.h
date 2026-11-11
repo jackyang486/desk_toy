@@ -3,6 +3,7 @@
 #include <arduino.h>
 #include "driver/i2c_master.h"
 #include <vector>
+#include "esp_heap_caps.h"
 #include "ai_vox_engine.h"
 #include "audio_device/audio_device_es8311.h"
 #define IIC_MASTER_NUM I2C_NUM_0
@@ -56,6 +57,63 @@ typedef struct WifiInfo {
 };
 
 
+// 路径池：路径和索引都放在 PSRAM 上，一块大缓冲存全部路径。
+// 替代 std::vector<String>：避免几十个 String 小块把内部堆的最大连续块切碎。
+// push()/release() 的实现在下方 inline，music/photo_album/lottie/game 四个页面共用。
+class MusicPathList {
+  public:
+    ~MusicPathList() { release(); }
+    void clear() { count_ = 0; pool_used_ = 0; }   // 保留池容量，下次扫描直接复用
+    bool empty() const { return count_ == 0; }
+    size_t size() const { return count_; }
+    const char *at(size_t i) const { return (i < count_) ? index_[i] : ""; }
+    bool push(const char *name) {
+        if (name == nullptr) return false;
+        const size_t len = strlen(name) + 1;
+        if (count_ == index_cap_) {
+            const size_t ncap = index_cap_ ? index_cap_ * 2 : 128;
+            const char **ni = (const char **)psram_realloc_((void *)index_, ncap * sizeof(const char *));
+            if (ni == nullptr) return false;
+            index_ = ni;
+            index_cap_ = ncap;
+        }
+        if (pool_used_ + len > pool_cap_) {
+            size_t ncap = pool_cap_ ? pool_cap_ : 4096;
+            while (ncap < pool_used_ + len) ncap *= 2;
+            char *np = (char *)psram_realloc_(pool_, ncap);
+            if (np == nullptr) return false;
+            pool_ = np;
+            pool_cap_ = ncap;
+        }
+        memcpy(pool_ + pool_used_, name, len);
+        index_[count_++] = pool_ + pool_used_;
+        pool_used_ += len;
+        return true;
+    }
+    void remove_at(size_t i) {
+        if (i >= count_) return;
+        for (size_t j = i; j + 1 < count_; ++j) index_[j] = index_[j + 1];
+        --count_;
+    }
+    void release() {
+        if (pool_) { heap_caps_free(pool_); pool_ = nullptr; }
+        if (index_) { heap_caps_free((void *)index_); index_ = nullptr; }
+        pool_cap_ = pool_used_ = index_cap_ = count_ = 0;
+    }
+  private:
+    static void *psram_realloc_(void *p, size_t size) {
+        void *np = heap_caps_realloc(p, size, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+        if (np == nullptr) np = heap_caps_realloc(p, size, MALLOC_CAP_8BIT);   // PSRAM 不够时退回内部堆
+        return np;
+    }
+    char  *pool_ = nullptr;
+    size_t pool_cap_ = 0;
+    size_t pool_used_ = 0;
+    const char **index_ = nullptr;
+    size_t index_cap_ = 0;
+    size_t count_ = 0;
+};
+
 class Board{
   private:
     i2c_master_bus_handle_t g_i2c_master_bus_handle = nullptr;
@@ -81,6 +139,10 @@ class Board{
     size_t record_audio(uint16_t *audio_buffer,uint32_t samples);
     void play_audio(uint16_t *record_buffer,size_t recorded_size);
     void scanDir(const char *dirPath,std::vector<String> *filelist,FILE_TYPE file_type);
+    // 回调版目录扫描：每命中一个符合类型的文件名就回调一次（name 只在回调期间有效），
+    // 调用方可直接拷进 PSRAM 池，避免几十个 String 小块把内部堆切碎。返回 false 可提前结束。
+    typedef bool (*DirFileCallback)(void *ctx, const char *name);
+    void scanDirEach(const char *dirPath,DirFileCallback onFile,void *ctx,FILE_TYPE file_type);
     void playMp3(const uint8_t* data, size_t size);
     void GetWifiList();
     void onWifiListScaned(std::function<void(const std::vector<WifiInfo>& wifi_list)> callback);

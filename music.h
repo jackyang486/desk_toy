@@ -3,6 +3,7 @@
 #include "Arduino.h"
 #include "Audio.h"
 #include <vector>
+#include "ESP32_board.h"
 #include "src/custom/custom.h"
 
 
@@ -10,10 +11,13 @@
 typedef enum {
   PAUSED,
   PLAY
-} PLAY_STATUS; 
+} PLAY_STATUS;
+
+// MusicPathList（PSRAM 路径池）已上移到 ESP32_board.h，photo_album/lottie/game 页共用。
+
 class Music_player {
   private:
-    std::vector<String> music_files;
+    MusicPathList music_files;
     uint16_t current_music;
     int  list_start_index;
     int  touch_start_Y;
@@ -48,7 +52,7 @@ class Music_player {
     int getMusicFilesSize(){
        return  music_files.size();
     };
-    std::vector<String> getMusicFilesList(){
+    const MusicPathList &getMusicPaths() const {
        return  music_files;
     };
     void setListStartIndex(int idx){

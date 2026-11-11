@@ -5,11 +5,25 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "esp_heap_caps.h"
+
 namespace id3 {
 namespace {
 
 constexpr uint32_t kTextFrameMax  = 1024;   // 文本帧最多读这么多（歌名/歌手/专辑足够了）
 constexpr uint32_t kLyricFrameMax = 8192;   // SYLT/USLT/TXXX 帧最多读这么多
+
+// 歌词帧缓冲：原来每解析一次都 malloc/free 最多 8KB 内部 RAM，反复进出音乐页会在
+// 内部堆里留下小洞。改成 PSRAM 上一块常驻复用（解析串行执行，无并发问题）。
+// PSRAM 不可用时退回内部 RAM 一次性分配。
+uint8_t *lyric_frame_buf() {
+    static uint8_t *buf = nullptr;
+    if (buf == nullptr) {
+        buf = (uint8_t *)heap_caps_malloc(kLyricFrameMax, MALLOC_CAP_SPIRAM);
+        if (buf == nullptr) buf = (uint8_t *)malloc(kLyricFrameMax);
+    }
+    return buf;
+}
 
 uint32_t synchsafe32(const uint8_t *p) {
     return ((uint32_t)p[0] << 21) | ((uint32_t)p[1] << 14) | ((uint32_t)p[2] << 7) | (uint32_t)p[3];
@@ -448,7 +462,7 @@ bool parse(File &file, Tag &tag) {
                 else tag.album = text;
             } else if (!strcmp(id, "SYLT") || !strcmp(id, "USLT") || !strcmp(id, "TXXX")) {
                 if (body_len <= kLyricFrameMax) {
-                    uint8_t *buf = (uint8_t *)malloc(body_len);
+                    uint8_t *buf = lyric_frame_buf();
                     if (buf != nullptr) {
                         const uint32_t n = read_body(file, body_pos, body_len, buf, body_len);
                         if (n > 6) {
@@ -456,7 +470,6 @@ bool parse(File &file, Tag &tag) {
                             else if (!strcmp(id, "USLT")) parse_uslt(buf, n, tag);
                             else parse_txxx(buf, n, tag);
                         }
-                        free(buf);
                     }
                 }
             } else if (!strcmp(id, "APIC") && !tag.has_cover()) {

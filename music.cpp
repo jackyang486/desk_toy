@@ -17,15 +17,26 @@
 #include "Ticker.h"
 #include <Adafruit_NeoPixel.h>
 #include <atomic>
+#include "esp_heap_caps.h"
 
 void check_list_item(uint16_t idx, bool check);
 #define LIST_VISIBLE_ITEMS 30 
 #define LIST_ITEM_HEIGHT 35    // 与 fill_music_list_panel() 里 lv_obj_set_height(btn, 35) 保持一致
+
+// ---------------- 歌曲路径池（PSRAM） ----------------
+// MusicPathList 的实现已上移到 ESP32_board.h（photo_album/lottie/game 页共用）。
+
+// scanDirEach 的回调：直接拷进路径池，不做任何内部堆分配
+static bool music_path_sink(void *ctx, const char *name) {
+    return static_cast<MusicPathList *>(ctx)->push(name);
+}
+
 static bool list_is_touching = false;
 static int32_t list_scroll_start_y = 0;   // 手势开始时的滚动位置，用于算"实际滚过了几条"
 static bool list_swipe_registered = false;
 static bool list_cb_registered = false;
 static uint32_t      g_last_curr_sec = 0;     // 定时器最近一次读到的播放位置（歌词整页切换用）
+static uint32_t      g_shown_sec = UINT32_MAX; // 上次已刷新到界面的秒数（去重，避免 50ms 级重排）
 static char          g_cur_file_path[128] = {0}; // 当前播放文件路径（相对 SD_MMC 挂载点）
 static const char *basePath = "S:/music";
 
@@ -353,15 +364,15 @@ void Music_player::play_music()
     total_sec = 1;
     if(current_music < 0) current_music = music_files.size() - 1;
     if(current_music >= music_files.size()) current_music = 0;
-    const String& musicFile = music_files.at(current_music);  // 不再拷贝 String，避免每次切歌多分配一块 DRAM
+    const char *musicFile = music_files.at(current_music);  // 路径池里的指针，不产生任何分配
     lv_obj_clear_flag(guider_ui.screen_music_pause_img, LV_OBJ_FLAG_HIDDEN);
     lv_obj_add_flag(guider_ui.screen_music_playing_img, LV_OBJ_FLAG_HIDDEN);
     char fullPath[256];
-    lv_snprintf(fullPath, sizeof(fullPath), "%s/%s","/music", musicFile.c_str());
+    lv_snprintf(fullPath, sizeof(fullPath), "%s/%s","/music", musicFile);
     strncpy(g_cur_file_path, fullPath, sizeof(g_cur_file_path) - 1);
     g_cur_file_path[sizeof(g_cur_file_path) - 1] = '\0';
     // 先用文件名占位；解析到 ID3 后再换成"歌手 - 歌名"
-    lv_label_set_text(guider_ui.screen_music_label_title,musicFile.c_str());
+    lv_label_set_text(guider_ui.screen_music_label_title,musicFile);
     // 必须先停歌再解析：SDMMC 不支持并发事务，解码任务还在读卡时解析 ID3 会读到坏数据（症状：封面在、歌词丢）。
     // stop_current 让解码任务立刻退出当前文件并关掉 SD 句柄，任务随后回到等待区（不退出任务本身）。
     music_audio.stop_current();
@@ -369,6 +380,7 @@ void Music_player::play_music()
     lv_slider_set_value(guider_ui.screen_music_slider, 0, LV_ANIM_OFF); //切歌时，滑块归0
     check_list_item(current_music,true);
     g_last_curr_sec = 0;
+    g_shown_sec = UINT32_MAX;   // 换歌后强制刷新一次时间文本
     lv_slider_set_range(guider_ui.screen_music_slider, 0, 1);
     // 下发新播放命令（任务收到后重新开文件，首帧解码成功时自动按真实采样率/声道数重开 codec）
     music_audio.play(fullPath);
@@ -434,14 +446,19 @@ static void lv_timer_refresh_time(lv_timer_t *timer)
     {
         const uint32_t curr = music_audio.position_ms() / 1000;
         g_last_curr_sec = curr;   // 供整页歌词切换时取当前进度
-        char buf[32];
-        sprintf(buf, "%02d:%02d / %02d:%02d",
-            curr / 60, curr % 60,
-            total_sec / 60, total_sec % 60
-        );
-        lv_label_set_text(guider_ui.screen_music_label_slider_time, buf);
-        lv_slider_set_value(guider_ui.screen_music_slider, curr, LV_ANIM_OFF);
-        lyric_update(curr);
+        // 只在秒数变化时刷新文本/滑块/歌词：原来每 50ms 无条件 lv_label_set_text，
+        // 每秒 20 次重排 LVGL 文本缓冲，播放期间内部堆被反复切碎（实测 largest 从 114KB 掉到 98KB）。
+        if (curr != g_shown_sec) {
+            g_shown_sec = curr;
+            char buf[32];
+            sprintf(buf, "%02d:%02d / %02d:%02d",
+                curr / 60, curr % 60,
+                total_sec / 60, total_sec % 60
+            );
+            lv_label_set_text(guider_ui.screen_music_label_slider_time, buf);
+            lv_slider_set_value(guider_ui.screen_music_slider, curr, LV_ANIM_OFF);
+            lyric_update(curr);
+        }
     }
     // WS2812B 响度灯：有新 PCM 帧就跟响度；暂停/停止超时则熄灭
     if (g_rgb_inited) {
@@ -520,8 +537,8 @@ void  Music_player::fill_music_list_panel(void) {
     }
     const int total = (int)music_files.size();
     for (int i = list_start_index; i < (list_start_index+LIST_VISIBLE_ITEMS); i++) {
-            if (i < 0 || i >= total) continue;   // 歌曲数不足一屏时 at() 越界会直接 abort()
-            const char* songName = music_files.at(i).c_str();
+            if (i < 0 || i >= total) continue;   // 越界保护：at() 越界返回空串，这里直接跳过
+            const char* songName = music_files.at(i);
             lv_obj_t *btn = NULL;
             if(list_swipe_registered){  //已加载过了
                 btn = lv_obj_get_child(list, (i-list_start_index));
@@ -661,8 +678,9 @@ void Music_player::music_loop(SCREEN_LOAD_STAUS playerLoadStatus){
         musicTag.unload();              // 进页面先清掉上一轮残留的标签（下次 load 时才分配）
         list_start_index = 0;           // 列表回到首页，避免与上次退出时的滑动位置错位
         list_is_touching = false;
-        music_files.reserve(128);       // 预分配，减少扫描期间 vector 反复 realloc 造成的 DRAM 碎片
-        board.scanDir(basePath,&music_files,MP3_TYPE);
+        // 路径全部写进 PSRAM 池，内部堆里不再有几十个 String 小块
+        board.scanDirEach(basePath, music_path_sink, &music_files, MP3_TYPE);
+        printf("[MEM][music] scanDir n=%u\n", (unsigned)music_files.size());
         // 事件回调只注册一次：重复注册会让 handler 被重复调用并永久多占一份内存
         if (!list_cb_registered) {
             lv_obj_add_event_cb(guider_ui.screen_music_list_music, music_list_swipe_event_handler, LV_EVENT_ALL, NULL);
@@ -703,8 +721,9 @@ void Music_player::music_loop(SCREEN_LOAD_STAUS playerLoadStatus){
         rgb_led_off();
         // 播放页里调过的音量只落在解码 PCM 上，这里补写回 ES8311 硬件音量
         Setting::GetInstance().FlushVolumeToHardware();
+        // 只 clear 不收容量：反复 clear/shrink_to_fit 会让内部堆每次进出页面都做一次
+        // "分配→释放"，留下无法合并的小洞；128 槽容量仅占 512B，留着更省事也更少碎片
         music_files.clear();
-        music_files.shrink_to_fit();
         lv_obj_clean(guider_ui.screen_music_list_music);
         list_swipe_registered = false;
     }

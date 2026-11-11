@@ -37,8 +37,10 @@ void Board::init_sd_card()
   }
 }
 
-// 递归扫描指定目录
-void Board::scanDir(const char *dirPath,std::vector<String> * filelist,FILE_TYPE file_type)
+// 目录扫描核心：命中一个符合类型的文件名就回调一次，回调返回 false 可提前结束。
+// 这里刻意不做任何堆分配（原来的 std::string lower_name 每个文件都会 malloc/free 一次，
+// 反复进出相册/音乐页会在内部堆里留下大量小洞，切碎最大连续块）。
+void Board::scanDirEach(const char *dirPath,DirFileCallback onFile,void *ctx,FILE_TYPE file_type)
 {
     lv_fs_dir_t dir;
     lv_fs_res_t res;
@@ -49,6 +51,7 @@ void Board::scanDir(const char *dirPath,std::vector<String> * filelist,FILE_TYPE
     }
     // 用于存储文件名
     char fname[128];
+    char lower[128];
     // 读取目录下每一项（文件/文件夹）
     while (1)
     {
@@ -60,42 +63,47 @@ void Board::scanDir(const char *dirPath,std::vector<String> * filelist,FILE_TYPE
         if (strcmp(fname, ".") == 0 || strcmp(fname, "..") == 0 || strcmp(fname, "/") ==0 || strcmp(fname, "/image") == 0)
             continue;
         if (strchr(fname, '.') == NULL) {
-             
-        } else { //如果是文件，则分别读取图片文件和音乐文件
-           size_t len = strlen(fname);
-           const std::string lower_name = [&]() {
-               std::string s = fname;
-               std::transform(s.begin(), s.end(), s.begin(), [](unsigned char c) {
-                   return static_cast<char>(std::tolower(c));
-               });
-               return s;
-           }();
-                if(file_type == IMG_TYPE && len > 4){
-                    if(lower_name.find(".jpg") != std::string::npos ||
-                       lower_name.find(".jpeg") != std::string::npos ||
-                       lower_name.find(".png") != std::string::npos ||
-                       lower_name.find(".bmp") != std::string::npos ||
-                       lower_name.find(".bin") != std::string::npos ||
-                       lower_name.find(".gif") != std::string::npos){
-                        filelist->push_back(fname);
-                    }
-                }else  if(file_type == MP3_TYPE && len > 4){
-                     if(lower_name.find(".wav") != std::string::npos || lower_name.find(".mp3") != std::string::npos){
-                        filelist->push_back(fname);
-                     }
-                }else if(file_type == JSON_TYPE && len > 5){
-                    if(lower_name.compare(len - 5, 5, ".json") == 0){
-                        filelist->push_back(fname);
-                    }
-                }else if(file_type == NES_TYPE && len > 4){
-                    if(lower_name.compare(len - 4, 4, ".nes") == 0){
-                        filelist->push_back(fname);
-                    }
-                }
-            }
+            continue;               // 目录（无扩展名）直接跳过
+        }
+        // 如果是文件，则分别读取图片文件和音乐文件
+        size_t len = strlen(fname);
+        if (len >= sizeof(lower)) continue;      // 超长文件名不处理，避免截断后误匹配
+        for (size_t i = 0; i < len; i++) {
+            lower[i] = static_cast<char>(std::tolower(static_cast<unsigned char>(fname[i])));
+        }
+        lower[len] = '\0';
+
+        bool matched = false;
+        if (file_type == IMG_TYPE && len > 4) {
+            matched = strstr(lower, ".jpg") != NULL || strstr(lower, ".jpeg") != NULL ||
+                      strstr(lower, ".png") != NULL || strstr(lower, ".bmp") != NULL ||
+                      strstr(lower, ".bin") != NULL || strstr(lower, ".gif") != NULL;
+        } else if (file_type == MP3_TYPE && len > 4) {
+            matched = strstr(lower, ".wav") != NULL || strstr(lower, ".mp3") != NULL;
+        } else if (file_type == JSON_TYPE && len > 5) {
+            matched = strcmp(lower + len - 5, ".json") == 0;
+        } else if (file_type == NES_TYPE && len > 4) {
+            matched = strcmp(lower + len - 4, ".nes") == 0;
+        }
+        if (matched && onFile != NULL && !onFile(ctx, fname)) {
+            break;
+        }
     }
     // 关闭目录
     lv_fs_dir_close(&dir);
+}
+
+// 兼容旧接口：把扫描结果塞进 std::vector<String>
+static bool scan_push_back_to_vector(void *ctx, const char *name)
+{
+    static_cast<std::vector<String> *>(ctx)->push_back(name);
+    return true;
+}
+
+// 递归扫描指定目录
+void Board::scanDir(const char *dirPath,std::vector<String> * filelist,FILE_TYPE file_type)
+{
+    scanDirEach(dirPath, scan_push_back_to_vector, filelist, file_type);
 }
 
 void Board::es8311_initial(){

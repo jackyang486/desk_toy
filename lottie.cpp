@@ -28,7 +28,11 @@ constexpr uint32_t kLottieFps = 30;
 static TaskHandle_t lottie_task_handle = NULL;
 static volatile bool lottie_task_stop = false;
 
-std::vector<String> lottie_files;
+MusicPathList lottie_files;   // 动画路径放 PSRAM 池，不再用 vector<String> 切碎内部堆
+// scanDirEach 回调：文件名直接拷进 PSRAM 路径池，不产生内部堆碎片
+static bool lottie_path_sink(void *ctx, const char *name) {
+    return static_cast<MusicPathList *>(ctx)->push(name);
+}
 size_t current_lottie = 0;
 lv_obj_t *lottie_object = nullptr;
 lv_obj_t *lottie_parent = nullptr;
@@ -93,7 +97,7 @@ void show_current_lottie()
 
     char path[256];
     const int written = snprintf(path, sizeof(path), "%s/%s",
-                                 kLottieFilePath, lottie_files[current_lottie].c_str());
+                                 kLottieFilePath, lottie_files.at(current_lottie));
     if (written < 0 || static_cast<size_t>(written) >= sizeof(path)) {
         printf("[Lottie] Animation path is too long");
         return;
@@ -206,7 +210,7 @@ void lottie_page_load(SCREEN_LOAD_STAUS status)
     }
 
     lottie_files.clear();
-    board.scanDir(kLottieScanPath, &lottie_files, JSON_TYPE);
+    board.scanDirEach(kLottieScanPath, lottie_path_sink, &lottie_files, JSON_TYPE);
     current_lottie = 0;
     if (lottie_files.empty()) {
         printf("[Lottie] No .json animations found in /lottie");

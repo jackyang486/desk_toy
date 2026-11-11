@@ -2,6 +2,7 @@
 #define __PHOTO_ALBUM_H_
 #include "Arduino.h"
 #include <vector>
+#include "ESP32_board.h"
 #include "src/custom/custom.h"
 #define ONLINE_IMG_W 240
 #define ONLINE_IMG_H 320
@@ -17,7 +18,7 @@ typedef struct {
 #define MAX_IMAGES 50        // 最大支持 50 张图
 class Photo_album {
   private:
-    std::vector<String> image_files;
+    MusicPathList image_files;   // 路径放 PSRAM 池，不再用 vector<String> 切碎内部堆
     uint8_t current_img;
     uint8_t online_active_idx_ = 0;
     bool online_active_ = false;
@@ -59,7 +60,7 @@ class Photo_album {
     void stop_online();
     void release_online_buffers();
     void pushImage(const char* path){
-      image_files.push_back(path);
+      image_files.push(path);
     }
     uint8_t getCurrentImg(){
        return current_img;
@@ -67,21 +68,17 @@ class Photo_album {
     void setCurrentImg(uint8_t currentImg){
        current_img = currentImg;
     };
-    /* 退出相册页时释放文件名列表（内部堆），下次进页重新扫描 */
+    /* 退出相册页时释放文件名列表，下次进页重新扫描（池容量保留复用） */
     void release_file_list(){
         image_files.clear();
-        image_files.shrink_to_fit();
         current_img = 0;
         hasInitial = false;
     };
     int getImageFilesSize(){
        return  image_files.size();
     };
-    std::vector<String> getImageFiles(){
-      return image_files;
-    }
-    String getNextImagePath(){
-        if(image_files.empty()) return String();   // 空目录时 at() 会抛 out_of_range 直接 abort
+    const char* getNextImagePath(){
+        if(image_files.empty()) return "";   // 空目录保护
         current_img++;
         if(current_img >= image_files.size())current_img = 0;
        return image_files.at(current_img);

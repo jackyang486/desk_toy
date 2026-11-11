@@ -9,6 +9,11 @@
 // 封面解码全程在 LVGL 线程，不会并发，单指针足够。
 static MusicTag *s_decoding = nullptr;
 
+// 单例 Tag：每首歌复用同一个对象。原来每首歌 new/delete 一次 Tag，
+// 连同 45 行歌词各自的 String 一起在内部堆里反复分配/释放，是进出音乐页
+// 后堆碎片（最大连续块掉 24KB）的主要来源。解析只在 LVGL 线程串行执行，复用安全。
+static id3::Tag s_tag;
+
 MusicTag::MusicTag()
     : tag_(nullptr),
       decoded_(nullptr),
@@ -26,11 +31,12 @@ MusicTag::~MusicTag() {
 
 bool MusicTag::load(const char *path) {
     if (path == nullptr || path[0] == '\0') return false;
-    // 每首歌重新 new：上一首的 vector/String 缓冲随 delete 整体归还堆
     unload();
-    tag_ = new (std::nothrow) id3::Tag();
-    if (tag_ == nullptr) return false;
+    s_tag.clear();                       // 只清内容，保留 lyrics 的已分配容量
+    if (s_tag.lyrics.capacity() == 0) s_tag.lyrics.reserve(64);   // 一次性扩容，避免逐行 realloc
+    tag_ = &s_tag;
     if (!id3::parse_file(SD_MMC, path, *tag_) || !tag_->valid) {
+        tag_ = nullptr;
         return false;
     }
     if (!tag_->title.isEmpty()) {
@@ -40,10 +46,9 @@ bool MusicTag::load(const char *path) {
 }
 
 void MusicTag::unload() {
-    if (tag_ != nullptr) {
-        delete tag_;
-        tag_ = nullptr;
-    }
+    // 不 delete：Tag 是静态复用的对象，这里只摘掉引用并清空内容
+    tag_ = nullptr;
+    s_tag.clear();
     display_name_ = "";
 }
 
