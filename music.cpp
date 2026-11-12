@@ -248,8 +248,9 @@ static void load_id3_info(const char *full_path) {
         return;
     }
 
-    if (!musicTag.title().isEmpty() && guider_ui.screen_music_label_title != NULL) {
+    if (!musicTag.title().isEmpty()) {
         lv_label_set_text(guider_ui.screen_music_label_title, musicTag.display_name().c_str());   // "歌手 - 歌名"进顶栏
+        lv_label_set_text(guider_ui.screen_music_label_song_name,musicTag.display_name().c_str());
     }
     musicTag.dump();
 
@@ -373,6 +374,7 @@ void Music_player::play_music()
     g_cur_file_path[sizeof(g_cur_file_path) - 1] = '\0';
     // 先用文件名占位；解析到 ID3 后再换成"歌手 - 歌名"
     lv_label_set_text(guider_ui.screen_music_label_title,musicFile);
+    lv_label_set_text(guider_ui.screen_music_label_song_name,musicFile);
     // 必须先停歌再解析：SDMMC 不支持并发事务，解码任务还在读卡时解析 ID3 会读到坏数据（症状：封面在、歌词丢）。
     // stop_current 让解码任务立刻退出当前文件并关掉 SD 句柄，任务随后回到等待区（不退出任务本身）。
     music_audio.stop_current();
@@ -670,6 +672,17 @@ void music_list_swipe_event_handler(lv_event_t *e) {
     }
 }
 
+// 延后建列表的异步回调：LOADED 处理返回、屏幕渲染出第一帧之后，在下一轮 lv_timer_handler 里执行。
+// list_fill_pending 防止极快退页时对已卸载的列表做重建。
+static bool list_fill_pending = false;
+static void fill_music_list_async_cb(void *param) {
+    (void)param;
+    if (!list_fill_pending) return;
+    list_fill_pending = false;
+    music_player.fill_music_list_panel();   // 内部依据 list_swipe_registered 决定重建还是复用
+    list_swipe_registered = true;
+}
+
 //循环播放
 void Music_player::music_loop(SCREEN_LOAD_STAUS playerLoadStatus){
     if(playerLoadStatus == LOADED){
@@ -686,10 +699,13 @@ void Music_player::music_loop(SCREEN_LOAD_STAUS playerLoadStatus){
             lv_obj_add_event_cb(guider_ui.screen_music_list_music, music_list_swipe_event_handler, LV_EVENT_ALL, NULL);
             list_cb_registered = true;
         }
-        fill_music_list_panel();        // 内部依据 list_swipe_registered 决定重建还是复用
-        list_swipe_registered = true;
+        // 建列表延后到下一轮 lv_timer_handler：让 LOADED 处理尽快返回、screen_music_player
+        // 容器先渲染出第一帧，避免扫描+建控件+音频初始化把切换动画后的画面卡住
+        list_fill_pending = true;
+        lv_async_call(fill_music_list_async_cb, NULL);
         lv_obj_set_style_text_font(guider_ui.screen_music_label_music_name, &font_puhui_16_4, LV_PART_MAIN|LV_STATE_DEFAULT); 
         lv_obj_set_style_text_font(guider_ui.screen_music_label_title, &font_puhui_16_4, LV_PART_MAIN|LV_STATE_DEFAULT); 
+        lv_obj_set_style_text_font(guider_ui.screen_music_label_song_name, &font_puhui_16_4, LV_PART_MAIN|LV_STATE_DEFAULT); 
         musicTag.reset_cover(guider_ui.screen_music_album_img);   // 默认封面资源先缩回原尺寸居中显示
         lyric_click_init();             // 封面容器点击 → 封面/整页歌词切换
         lyric_page_reset();
@@ -706,6 +722,7 @@ void Music_player::music_loop(SCREEN_LOAD_STAUS playerLoadStatus){
             vTaskDelay(pdMS_TO_TICKS(50));
             play_music();
     }else{
+        list_fill_pending = false;      // 取消尚未执行的延后建列表
         lv_obj_clear_flag(page_head.time_label,LV_OBJ_FLAG_HIDDEN);
         playEnable = false;
         // 1) 先停掉 LVGL 定时器（内部会访问 audio->），避免后续销毁过程中再被触发

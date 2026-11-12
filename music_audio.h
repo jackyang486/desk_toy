@@ -24,6 +24,10 @@ public:
     void stop_current(uint32_t timeout_ms = 500);
     // 开始播放指定文件（路径相对 SD_MMC 挂载点）
     void play(const char *path);
+    // 开始播放网络电台流（MP3 over HTTP/HTTPS）。断线会自动重连，切台只需再次调用
+    void play_stream(const char *url);
+    // 当前音源是否为网络流
+    bool is_stream() const;
 
     // 暂停/继续
     void toggle_pause();

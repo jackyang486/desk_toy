@@ -7,14 +7,21 @@
 #include "ESP32_board.h"
 #include "SD_MMC.h"
 #include "setting.h"
+#include "HTTPClient.h"
+#include "WiFiClient.h"
+#include "WiFiClientSecure.h"
 #include "components/espressif/esp_audio_codec/esp_mp3_dec.h"
 #include "components/espressif/esp_audio_codec/esp_audio_simple_dec.h"
 
 #define DEC_INBUF_SIZE   4096               // 输入缓冲：单帧最大 ~1.5KB，4KB 足够
 #define DEC_OUTBUF_SIZE  8192               // 输出缓冲：最大帧 1152 样本 x 2ch x 2B = 4608B
-#define DEC_TASK_STACK   (1024 * 6)         // 24KB：实测 16KB 只剩 1.7KB，太小
+#define DEC_TASK_STACK   (1024 * 10)        // 40KB：文件播放 24KB 够用，但 HTTPS 电台的 TLS
+                                            // 握手要 ~10KB 栈，统一按 40KB 分配（PSRAM 不缺）
+#define STREAM_TIMEOUT_MS      8000         // 连续这么久读不到数据 → 判定断流并重连
+#define STREAM_RETRY_MIN_MS    1500         // 重连最小间隔（失败次数越多退避越久）
+#define STREAM_RETRY_MAX_MS    8000
 
-enum PlayerCmd : uint8_t { PCMD_IDLE = 0, PCMD_PLAY, PCMD_ABORT };
+enum PlayerCmd : uint8_t { PCMD_IDLE = 0, PCMD_PLAY, PCMD_PLAY_STREAM, PCMD_ABORT };
 
 static SemaphoreHandle_t g_cmd_lock = NULL;       // 保护 g_cmd / g_cmd_path
 static volatile PlayerCmd g_cmd = PCMD_IDLE;      // LVGL 线程写、解码任务读
@@ -22,6 +29,7 @@ static char     g_cmd_path[256] = {0};
 static volatile bool g_run = false;               // 解码任务生命周期（音乐页打开期间为 true）
 static volatile bool g_playing = false;           // 当前文件解码循环进行中
 static volatile bool g_file_open = false;         // 任务正占用 SD 卡（停歌后计时器清掉）
+static volatile bool g_is_stream = false;         // 当前音源是网络流（切台/暂停语义不同）
 static volatile bool g_paused = false;
 static volatile bool g_eof = false;               // 播完/打不开，待 LVGL 线程取走
 static volatile uint32_t g_pos_ms = 0;            // 当前播放位置 ms（任务推进）
@@ -199,7 +207,172 @@ static bool decode_one_file(const char *full_path,
     return ok;
 }
 
-// 解码任务：等命令 → 解码文件 → 播完/被打断后回到等待。栈与输入输出缓冲全静态。
+// ---------------- 网络电台流（MP3 over HTTP/HTTPS）----------------
+// 一次 HTTP 会话的播放循环。返回 true 表示连接异常、可重连；false 表示收到停止命令。
+static bool stream_session(const char *url, const std::shared_ptr<ai_vox::AudioDeviceEs8311> &dev) {
+    const bool use_tls = (strncmp(url, "https://", 8) == 0);
+    WiFiClient plain;
+    WiFiClientSecure tls;
+    HTTPClient http;
+    if (use_tls) {
+        tls.setInsecure();                 // 电台流不做证书校验：省 RAM、免 NTP 时间依赖
+        http.begin(tls, url);
+    } else {
+        http.begin(plain, url);
+    }
+    http.setConnectTimeout(STREAM_TIMEOUT_MS);
+    http.setTimeout(STREAM_TIMEOUT_MS);
+    http.setFollowRedirects(HTTPC_STRICT_FOLLOW_REDIRECTS);   // 电台 CDN 常见 302 跳转
+    http.setUserAgent("ESP32-DeskToy/1.0");
+
+    const int code = http.GET();
+    if (code != HTTP_CODE_OK) {
+        printf("[radio] http %d, retry\n", code);
+        http.end();
+        return true;
+    }
+    WiFiClient *st = http.getStreamPtr();
+    if (st == nullptr) {
+        http.end();
+        return true;
+    }
+
+    // 单次播放页里 emos 通知音可能重注册过 MP3 解码器，这里补注册（幂等）
+    esp_mp3_dec_register();
+    esp_audio_simple_dec_cfg_t cfg = {
+        .dec_type = ESP_AUDIO_SIMPLE_DEC_TYPE_MP3,
+        .dec_cfg = NULL,
+        .cfg_size = 0,
+    };
+    esp_audio_simple_dec_handle_t dec = NULL;
+    if (esp_audio_simple_dec_open(&cfg, &dec) != ESP_AUDIO_ERR_OK) {
+        printf("[radio] dec open fail\n");
+        http.end();
+        return true;
+    }
+
+    uint32_t pcm_rate = 44100;
+    uint8_t  pcm_ch = 2;
+    bool info_set = false;
+    int32_t fill = 0;                 // inbuf 未消费字节
+    int stall = 0;                    // 连续无产出计数（跳过 ICY 元数据等垃圾）
+    uint32_t last_data_ms = millis();
+    bool want_exit = false;
+
+    g_playing = true;
+
+    while (g_run) {
+        if (g_cmd != PCMD_IDLE) { want_exit = true; break; }   // 切台/退出
+
+        if (g_paused) {
+            // 暂停：停止读取让 TCP 窗口反压服务端（不消耗流量），恢复时把积压的旧数据丢掉，
+            // 保证继续播放时听到的是"实时"内容而不是几秒前的缓冲
+            while (g_paused && g_run && g_cmd == PCMD_IDLE) vTaskDelay(pdMS_TO_TICKS(20));
+            uint8_t tmp[128];
+            int remain = st->available();
+            while (remain > 0) {
+                const int want = remain > (int)sizeof(tmp) ? (int)sizeof(tmp) : remain;
+                const int n = st->read(tmp, want);
+                if (n <= 0) break;
+                remain -= n;
+            }
+            fill = 0;
+            last_data_ms = millis();
+            continue;
+        }
+
+        // 1) 填输入缓冲
+        if (fill < DEC_INBUF_SIZE) {
+            const int avail = st->available();
+            if (avail > 0) {
+                int want = DEC_INBUF_SIZE - fill;
+                if (want > avail) want = avail;
+                const int n = st->read(g_inbuf + fill, want);
+                if (n > 0) { fill += n; last_data_ms = millis(); }
+            } else if (!st->connected()) {
+                printf("[radio] connection closed\n");
+                break;                                  // 断流：交给外层重连
+            } else if (millis() - last_data_ms > STREAM_TIMEOUT_MS) {
+                printf("[radio] read timeout\n");
+                break;                                  // 断流：交给外层重连
+            } else {
+                vTaskDelay(pdMS_TO_TICKS(2));           // 等数据，避免空转
+                continue;
+            }
+        }
+
+        // 2) 解码（与文件路径同一套逻辑，只是没有 eos）
+        esp_audio_simple_dec_raw_t raw = {};
+        raw.buffer = g_inbuf;
+        raw.len = fill;
+        raw.eos = false;
+        esp_audio_simple_dec_out_t out = {};
+        out.buffer = g_outbuf;
+        out.len = DEC_OUTBUF_SIZE;
+        esp_audio_simple_dec_process(dec, &raw, &out);
+
+        if (raw.consumed == 0 && out.decoded_size == 0) {
+            if (fill < DEC_INBUF_SIZE) continue;        // 输入不足一帧，继续读
+            if (++stall > 64) {                         // 连续 64 次仍无产出：流已不可用
+                printf("[radio] no audio, reconnect\n");
+                break;
+            }
+            memmove(g_inbuf, g_inbuf + 1, (size_t)(fill - 1));   // 丢 1 字节重新对齐帧头
+            fill--;
+            continue;
+        }
+        stall = 0;
+        fill -= raw.consumed;
+        if (raw.consumed > 0 && fill > 0) memmove(g_inbuf, g_inbuf + raw.consumed, (size_t)fill);
+
+        if (out.decoded_size > 0) {
+            if (!info_set) {                            // 首帧：按流真实采样率/声道重开输出端
+                esp_audio_simple_dec_info_t info = {};
+                if (esp_audio_simple_dec_get_info(dec, &info) == ESP_AUDIO_ERR_OK) {
+                    pcm_rate = info.sample_rate ? info.sample_rate : 44100;
+                    pcm_ch = info.channel ? info.channel : 2;
+                    if (dev) dev->ReopenOutput(pcm_rate, pcm_ch);
+                    info_set = true;
+                    printf("[radio] stream %u Hz %u ch\n", (unsigned)pcm_rate, (unsigned)pcm_ch);
+                }
+            }
+            const size_t nsamples = out.decoded_size / 2;
+            int16_t *p = (int16_t *)g_outbuf;
+            vu_from_pcm(p, nsamples);
+            const uint8_t vol = g_volume;
+            if (vol < 100) {
+                const int32_t sc = (int32_t)vol * vol;
+                for (size_t i = 0; i < nsamples; i++) p[i] = (int16_t)((int32_t)p[i] * sc / 10000);
+            }
+            if (dev) dev->Write(p, nsamples);           // 阻塞写，DMA 满即节流（电台天然实时）
+        }
+    }
+
+    if (dec) esp_audio_simple_dec_close(dec);
+    if (dev && info_set) {
+        int16_t z[576] = {0};
+        dev->Write(z, 576);                             // 排空 DMA 残尾
+    }
+    http.end();
+    g_playing = false;
+    return !want_exit;
+}
+
+// 电台流外壳：断线自动重连（退避 1.5s → 8s），直到收到停止命令
+static void decode_stream(const char *url, const std::shared_ptr<ai_vox::AudioDeviceEs8311> &dev) {
+    int fails = 0;
+    while (g_run && g_cmd == PCMD_IDLE) {
+        if (!stream_session(url, dev)) break;
+        if (++fails > 100) { printf("[radio] too many retries, give up\n"); break; }
+        uint32_t delay_ms = STREAM_RETRY_MIN_MS * (uint32_t)fails;
+        if (delay_ms > STREAM_RETRY_MAX_MS) delay_ms = STREAM_RETRY_MAX_MS;
+        for (uint32_t waited = 0; waited < delay_ms && g_run && g_cmd == PCMD_IDLE; waited += 50) {
+            vTaskDelay(pdMS_TO_TICKS(50));
+        }
+    }
+}
+
+// 解码任务：等命令 → 解码文件/网络流 → 播完/被打断后回到等待。栈与输入输出缓冲全静态。
 static void decode_task(void *pvParam) {
     (void)pvParam;
     esp_mp3_dec_register();                       // 与 Board::playMp3 共用同一注册（幂等）
@@ -214,8 +387,16 @@ static void decode_task(void *pvParam) {
         xSemaphoreGive(g_cmd_lock);
 
         if (cmd == PCMD_PLAY) {
+            g_is_stream = false;
             decode_one_file(path, dev);
             g_eof = true;                         // 播完/失败都上抛，由 LVGL 线程切下一曲
+            continue;
+        }
+        if (cmd == PCMD_PLAY_STREAM) {
+            g_is_stream = true;
+            decode_stream(path, dev);             // 内部自带重连，只在停止命令/彻底失败时返回
+            g_is_stream = false;
+            g_eof = true;                         // 交给上层（电台页不轮询，音乐页会清零）
             continue;
         }
         vTaskDelay(pdMS_TO_TICKS(10));            // ABORT 或 IDLE：停在等待区
@@ -252,6 +433,7 @@ bool MusicAudio::begin() {
     g_eof = false;
     g_playing = false;
     g_file_open = false;
+    g_is_stream = false;
     g_level.store(0, std::memory_order_relaxed);
     g_run = true;
     g_task_handle = xTaskCreateStaticPinnedToCore(decode_task, "music_dec", DEC_TASK_STACK,
@@ -293,6 +475,17 @@ void MusicAudio::play(const char *path) {
     g_paused = false;
     g_eof = false;
     post_cmd(PCMD_PLAY, path);
+}
+
+void MusicAudio::play_stream(const char *url) {
+    if (!g_run || url == NULL || url[0] == '\0') return;
+    g_paused = false;
+    g_eof = false;
+    post_cmd(PCMD_PLAY_STREAM, url);
+}
+
+bool MusicAudio::is_stream() const {
+    return g_is_stream;
 }
 
 void MusicAudio::toggle_pause() {

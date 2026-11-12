@@ -541,7 +541,7 @@ void robot_win_load(SCREEN_LOAD_STAUS loadstatus){
         xTaskCreatePinnedToCore(
                         xiaozhi_chat_task,
                         "xiaozhi_chat_task",
-                        1024 * 10,
+                        1024 * 20,
                         NULL,
                         2 | portPRIVILEGE_BIT,
                         NULL,

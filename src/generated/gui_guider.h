@@ -106,13 +106,21 @@ lv_obj_t *screen_weather;
 	lv_obj_t *screen_music_btn_music_label;
 	lv_obj_t *screen_music_label_title;
 	lv_obj_t *screen_music_cont_cover;
+	lv_obj_t *screen_music_label_song_name;
 	lv_obj_t *screen_robot;
 	bool screen_robot_del;
 	lv_obj_t *screen_robot_cont_msg;
 	lv_obj_t *screen_robot_label_msg;
 	lv_obj_t *screen_radio;
 	bool screen_radio_del;
-	lv_obj_t *screen_radio_list_radio;
+	lv_obj_t *screen_radio_img_cover;
+	lv_obj_t *screen_radio_cont_control;
+	lv_obj_t *screen_radio_img_play;
+	lv_obj_t *screen_radio_img_next;
+	lv_obj_t *screen_radio_img_prev;
+	lv_obj_t *screen_radio_img_pause;
+	lv_obj_t *screen_radio_label_title;
+	lv_obj_t *screen_radio_label_radio_name;
 	lv_obj_t *screen_mouse;
 	bool screen_mouse_del;
 	lv_obj_t *screen_mouse_btn_right;
@@ -272,6 +280,12 @@ LV_IMAGE_DECLARE(_time_RGB565A8_30x30);
 LV_IMAGE_DECLARE(_volume_RGB565A8_30x30);
 LV_IMAGE_DECLARE(_sun_RGB565A8_30x30);
 LV_IMAGE_DECLARE(_wifiEnbale_RGB565A8_30x30);
+LV_IMAGE_DECLARE(_station_artwork_130_RGB565A8_130x130);
+LV_IMAGE_DECLARE(_btn_play_RGB565A8_30x30);
+LV_IMAGE_DECLARE(_icon_next_RGB565A8_30x30);
+LV_IMAGE_DECLARE(_icon_prev_RGB565A8_30x30);
+LV_IMAGE_DECLARE(_btn_pause_RGB565A8_30x30);
+
 
 LV_FONT_DECLARE(lv_font_montserratMedium_16)
 LV_FONT_DECLARE(lv_font_SourceHanSerifSC_Regular_20)
