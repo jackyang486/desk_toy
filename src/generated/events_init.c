@@ -412,6 +412,8 @@ static void screen_radio_img_next_event_handler (lv_event_t *e)
     switch (code) {
     case LV_EVENT_CLICKED:
     {
+        lv_obj_add_flag(guider_ui.screen_radio_img_play,LV_OBJ_FLAG_HIDDEN);
+        lv_obj_clear_flag(guider_ui.screen_radio_img_pause,LV_OBJ_FLAG_HIDDEN);
         radio_next();
         break;
     }
@@ -426,6 +428,8 @@ static void screen_radio_img_prev_event_handler (lv_event_t *e)
     switch (code) {
     case LV_EVENT_CLICKED:
     {
+        lv_obj_add_flag(guider_ui.screen_radio_img_play,LV_OBJ_FLAG_HIDDEN);
+        lv_obj_clear_flag(guider_ui.screen_radio_img_pause,LV_OBJ_FLAG_HIDDEN);
         radio_prev();
         break;
     }

@@ -66,7 +66,7 @@ void Radio::TogglePlay() {
         PlayStation(current_index_);   // 还没起播过（或引擎已退出）：直接开播当前台
         return;
     }
-    ui_refresh();
+     lv_label_set_text(guider_ui.screen_radio_label_radio_name, radio_infos[current_index_].name);
 }
 
 void Radio::PlayStation(size_t index) {
@@ -76,13 +76,11 @@ void Radio::PlayStation(size_t index) {
 
     if (WiFi.status() != WL_CONNECTED) {
         playing_ = false;
-        ui_refresh();
         show_toast(lv_screen_active(), "WIFI未连接!");
         return;
     }
     if (!ensure_engine()) {
         playing_ = false;
-        ui_refresh();
         show_toast(lv_screen_active(), "音频初始化失败");
         return;
     }
@@ -90,13 +88,14 @@ void Radio::PlayStation(size_t index) {
     playing_ = true;
     music_audio.play_stream(radio_infos[current_index_].url);
     printf("[radio] play %s -> %s\n", radio_infos[current_index_].name, radio_infos[current_index_].url);
-    ui_refresh();
+    lv_label_set_text(guider_ui.screen_radio_label_radio_name, radio_infos[current_index_].name);
 }
 
 void Radio::radio_screen_load(SCREEN_LOAD_STAUS status){
     if (status == LOADED) {
         // 进页面只刷新 UI，不自动起播：等用户点播放键（省流量，也避免和唤醒词抢 I2S）
-        ui_refresh();
+        lv_obj_set_style_text_font(guider_ui.screen_radio_label_radio_name, &font_puhui_16_4, LV_PART_MAIN | LV_STATE_DEFAULT);
+        PlayStation(0); 
     } else {
         // 退页面：停流 + 释放解码任务，codec 恢复默认 16k 单声道给 AI_VOX 用
         StopPlay();

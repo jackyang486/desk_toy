@@ -14,6 +14,7 @@
 #define WIFI_CONNECT_TIMEOUT 5000  // 连接超时5秒
 #define WIFI_NAMESPACE "wifi_data"
 #include "network_connected_mp3.h"
+#include "network_connect_fail_mp3.h"
 
 static constexpr uint32_t kWifiWorkerStack = 12 * 1024;
 static constexpr uint32_t kWifiScanTaskStack = 4 * 1024;
@@ -155,14 +156,6 @@ void wifi_config::screen_list_enter() {
     if (list_timer_ == nullptr) {
         list_timer_ = lv_timer_create(list_timer_cb, 100, NULL);
     }
-   static lv_style_t style_wifi_btn_text;
-   static bool style_added = false;
-   if (!style_added) {          // 每次进页面都 add 会重复挂载样式
-       style_added = true;
-       lv_style_init(&style_wifi_btn_text);
-       lv_style_set_text_font(&style_wifi_btn_text, &font_puhui_16_4);
-       lv_obj_add_style(guider_ui.screen_wifi_list, &style_wifi_btn_text, LV_PART_ITEMS | LV_STATE_DEFAULT);
-   }
    printf("scan begin\n");
    xTaskCreate([](void* arg) {
        vTaskDelay(pdMS_TO_TICKS(200));   // 让页面切换动画先跑完，别占着 UI 线程
@@ -230,6 +223,7 @@ void  wifi_config::wifi_connect(const char* ssid, const char* pass){
       {
           WiFi.disconnect();
           WiFi.mode(WIFI_OFF); 
+          board.playMp3(networkConnectFailMp3,sizeof(networkConnectFailMp3));
           break;
       }
         // 连接成功

@@ -33,7 +33,7 @@ Setting::Setting()
       volume_(20),
       screen_timeout_ms_(DEFAULT_SCREEN_TIMEOUT_MS),
       online_img_url_base_(DEFAULT_ONLINE_IMG_URL_BASE){
-      LoadSettings();
+     // LoadSettings();
 }
 
 void Setting::Init() {
