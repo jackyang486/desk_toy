@@ -197,7 +197,9 @@ void wifi_config::wifi_connect_task(){
       vTaskDelay(pdMS_TO_TICKS(1000));
       // 切回 ui_task 再动 LVGL
       p->instance->post_form_reset();
-      if(WiFi.status() == WL_CONNECTED){
+      const bool connected = (WiFi.status() == WL_CONNECTED);
+      p->instance->post_connected_state(connected);   // 交给 ui_task 改界面（顶栏状态）
+      if(connected){
          auto& setting = Setting::GetInstance();
          setting.saveWifiConfig(p->ssid.c_str(),p->password.c_str());
       }

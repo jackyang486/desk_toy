@@ -6,6 +6,7 @@
 
 #include "ESP32_board.h"
 #include "SD_MMC.h"
+#include "WiFi.h"
 #include "setting.h"
 // 网络电台：用 arduino-audio-tools 的 URLStream 做数据源（自带 TLS/chunked/302 重定向）。
 // 注：为配合 arduino-esp32 core 3.x 打了 5 个补丁，见 libraries/arduino-audio-tools-main：
@@ -278,6 +279,47 @@ static size_t ring_used() {
 
 // 网络任务（内部栈）：URLStream 连接 → 持续把流数据搬进环形缓冲（写满即阻塞 = TCP 背压）。
 // chunked 解包、302 重定向、TLS 均由 URLStream 内部处理。
+// 连接失败诊断：把 URLStream 里黑盒的失败拆成三段分别计时，
+// 区分"DNS 解析失败/慢"、"TCP 连不上"、"TLS 握手失败"三种情况。
+// （浏览器正常但设备全连不上时，重点看这里：浏览器常走 IPv6，ESP32 只有 IPv4）
+static void radio_net_diag(const char *url) {
+    printf("[radio] diag: rssi %d, ip %s, gw %s, dns %s, heap %u\n",
+           (int)WiFi.RSSI(),
+           WiFi.localIP().toString().c_str(),
+           WiFi.gatewayIP().toString().c_str(),
+           WiFi.dnsIP().toString().c_str(),
+           (unsigned)ESP.getFreeHeap());
+
+    // 提取 host 和端口
+    const char *p = strstr(url, "://");
+    const char *host = p ? p + 3 : url;
+    char hostbuf[64] = {0};
+    size_t hl = 0;
+    while (host[hl] && host[hl] != ':' && host[hl] != '/' && hl < sizeof(hostbuf) - 1) hl++;
+    memcpy(hostbuf, host, hl);
+    const bool is_tls = (strncmp(url, "https", 5) == 0);
+    uint16_t port = is_tls ? 443 : 80;
+    const char *colon = strchr(host, ':');     // host:port 形式
+    if (colon && colon < host + hl) port = (uint16_t)atoi(colon + 1);
+
+    uint32_t t0 = millis();
+    IPAddress ip;
+    const int ret = WiFi.hostByName(hostbuf, ip);
+    printf("[radio] dns %s -> %s (%ums, ret %d)\n",
+           hostbuf, ret == 1 ? ip.toString().c_str() : "FAIL",
+           (unsigned)(millis() - t0), ret);
+    if (ret != 1) return;
+
+    // 裸 TCP 直连已解析到的 IP（不带 TLS）：能区分"域名被劫持/解析错"与"TCP 链路不通"
+    WiFiClient c;
+    const uint32_t t1 = millis();
+    const bool ok = c.connect(ip, port);
+    printf("[radio] tcp %s:%u -> %s (%ums)\n",
+           ip.toString().c_str(), port, ok ? "ok" : "FAIL",
+           (unsigned)(millis() - t1));
+    c.stop();
+}
+
 static void net_task(void *pvParam) {
     const uint32_t my_gen = (uint32_t)(uintptr_t)pvParam;
     bool fail = false;
@@ -294,6 +336,7 @@ static void net_task(void *pvParam) {
         const uint32_t t0 = millis();
         if (!url.begin(g_stream_url)) {
             printf("[radio] connect failed after %ums\n", (unsigned)(millis() - t0));
+            radio_net_diag(g_stream_url);
             fail = true;
         } else {
             const char *ct = url.httpRequest().reply().get("Content-Type");

@@ -18,26 +18,18 @@
 #include "components/espressif/esp_audio_codec/esp_audio_simple_dec.h"
 #include "components/espressif/esp_audio_codec/esp_mp3_dec.h"
 #include "components/wifi_configurator/wifi_configurator.h"
+#include "HTTPClient.h"
+#include "cJSON.h"
+#include "photo_album.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/queue.h"
 #include "src/generated/gui_guider.h"
-static lv_obj_t *chat_label;
 
-//#define MAX_MESSAGES 5
-
-// LV_FONT_DECLARE(font_awesome_30_4);
-// // 定义消息类型
-// typedef enum {
-//     MSG_TYPE_OTHER, // 对方（左侧白色气泡）
-//     MSG_TYPE_SELF   // 自己（右侧绿色气泡）
-// } msg_type_t;
-
-// // 【关键】定义全局或静态样式变量，避免重复创建导致内存泄漏
-// static lv_style_t style_bubble_base;
-// static lv_style_t style_bubble_other;
-// static lv_style_t style_bubble_self;
-// static bool styles_initialized = false;
- static bool screen_loaded = false;
- static bool has_initial = false;
- static std::string g_current_emotion = "";
+static bool screen_loaded = false;
+static bool has_initial = false;
+static std::string g_current_emotion = "";
+static TaskHandle_t g_chat_task_handle = nullptr;
+static volatile bool g_pending_open_photo = false;  // MCP 请求打开相册（由 lv_timer 在 LVGL 线程执行切换）
 
 static const std::vector<std::string> kEmotionOrder = {
     "neutral", "happy", "laughing", "funny", "sad", "angry", "crying",
@@ -46,103 +38,6 @@ static const std::vector<std::string> kEmotionOrder = {
     "confused"
 };   
 
-
-
-
-// /**
-//  * @brief 初始化聊天泡泡样式 (只需调用一次)
-//  */
-// void init_chat_styles(void) {
-//     if (styles_initialized) return;
-
-//     // 1. 基础气泡样式 (内边距、圆角、无边框)
-//     lv_style_init(&style_bubble_base);
-//     lv_style_set_radius(&style_bubble_base, 8);
-//     lv_style_set_border_width(&style_bubble_base, 0);
-//     lv_style_set_pad_all(&style_bubble_base, 8);      // 文字距离气泡边缘的距离
-//     lv_style_set_text_font(&style_bubble_base, &font_puhui_16_4); // 替换为你自己的中文字体
-//     lv_style_set_bg_opa(&style_bubble_base, LV_OPA_COVER);
-
-//     // 2. 对方气泡颜色 (白色)
-//     lv_style_init(&style_bubble_other);
-//     lv_style_set_bg_color(&style_bubble_other, lv_color_hex(0xF5DFA6));
-
-//     // 3. 自己气泡颜色 (微信绿 #95EC69)
-//     lv_style_init(&style_bubble_self);
-//     lv_style_set_bg_color(&style_bubble_self, lv_color_hex(0x95EC69));
-
-//     styles_initialized = true;
-// }
-
-// /**
-//  * @brief 添加一条聊天消息 (LVGL 8.3.6 标准写法)
-//  */
-// void add_chat_message(lv_obj_t *parent, const char *text, msg_type_t type) {
-//     // 确保样式已初始化
-//     init_chat_styles();
-
-//       // 检查消息数量是否超过限制
-//    uint32_t child_count = lv_obj_get_child_cnt(parent);
-//    if (child_count >= MAX_MESSAGES) {
-//     // 删除最早的消息（第一个子对象）
-//     lv_obj_t* first_child = lv_obj_get_child(parent, 0);
-//     //lv_obj_t* last_child = lv_obj_get_child(parent, child_count - 1);
-//     if (first_child != nullptr) {
-//       lv_obj_del(first_child);
-//     }
-//     // Scroll to the last message immediately
-//     //if (last_child != nullptr) {
-//     //  lv_obj_scroll_to_view_recursive(last_child, LV_ANIM_OFF);
-//     //}
-//   }
-
-//     // --- 1. 创建消息行容器 ---
-//     lv_obj_t * msg_row = lv_obj_create(parent);
-//     if (!msg_row) return; // 内存分配失败保护
-//     lv_obj_remove_style_all(msg_row); // 清除默认容器的阴影和边框
-//     lv_obj_set_size(msg_row, LV_PCT(100), LV_SIZE_CONTENT);
-    
-//     // 设置 Flex 布局：水平排列，垂直居中
-//     lv_obj_set_flex_flow(msg_row, LV_FLEX_FLOW_ROW);
-//     lv_obj_set_flex_align(msg_row, 
-//         type == MSG_TYPE_OTHER ? LV_FLEX_ALIGN_START : LV_FLEX_ALIGN_END, // 主轴对齐
-//         LV_FLEX_ALIGN_CENTER, // 交叉轴对齐
-//         LV_FLEX_ALIGN_CENTER  // 追踪轴对齐
-//     );
-//     lv_obj_set_style_pad_bottom(msg_row, 10, 0); // 消息之间的间距
-
-//     // --- 3. 创建气泡容器并应用样式 ---
-//     lv_obj_t *bubble = lv_obj_create(msg_row);
-//     if (!bubble) {
-//         lv_obj_del(msg_row); // 清理半成品的 row
-//         return;
-//     }
-//     lv_obj_remove_style_all(bubble); // 必须清除默认样式，否则会有灰色背景和边框
-    
-//     // 添加基础样式
-//     lv_obj_add_style(bubble, &style_bubble_base, 0);
-//     // 根据类型添加颜色样式
-//     lv_obj_add_style(bubble, type == MSG_TYPE_OTHER ? &style_bubble_other : &style_bubble_self, 0);
-    
-//     // 限制气泡最大宽度，防止长文本占满整行
-//     lv_obj_set_width(bubble, LV_PCT(70)); 
-//     lv_obj_set_height(bubble, LV_SIZE_CONTENT); 
-
-//     // --- 4. 添加文字标签 ---
-//     lv_obj_t *label = lv_label_create(bubble);
-//     if (!label) {
-//         lv_obj_del(bubble);
-//         lv_obj_del(msg_row);
-//         return;
-//     }
-//     lv_label_set_text(label, text);
-//     lv_label_set_long_mode(label, LV_LABEL_LONG_WRAP); // 自动换行
-//     lv_obj_set_width(label, lv_pct(100));              // 撑满气泡宽度以触发换行
-
-//     // --- 6. 自动滚动到底部 ---
-//     lv_obj_scroll_to_view_recursive(msg_row, LV_ANIM_ON);
-  
-// }
 
 namespace {
 
@@ -238,6 +133,26 @@ void InitMcpTools() {
                     "Get the current screen timeout in minutes.",
                     {}
   );
+
+  engine.AddMcpTool("self.photo_album.open",
+                    "Open the photo album screen to browse pictures stored on the SD card. "
+                    "Use this when the user asks to open the photo album / browse pictures.",
+                    {}
+  );
+
+  engine.AddMcpTool("self.photo_album.describe_image",
+                    "Describe the picture currently displayed in the photo album, "
+                    "or answer questions about it. Only usable while the photo album "
+                    "screen is open and a local picture is shown.",
+                    {
+                        {
+                            "question",
+                            ai_vox::ParamSchema<std::string>{
+                                .default_value = std::string("请描述这张图片的内容"),
+                            },
+                        },
+                    }
+  );
 }
 }
 
@@ -281,20 +196,188 @@ void SetEmotion(const std::string& emotion) {
   }
 }
 
-// ---- 表情切换统一经由 lv_timer 在 LVGL 线程执行 ----
-// chat_loop 跑在 xiaozhi_chat_task（独立 FreeRTOS 任务）里，直接调
-// lv_obj_set_style_* 与 LVGL 渲染线程并发不安全；这里只记录待切换表情，
-// 由 emotion_switch_timer_cb（lv_timer，跑在 LVGL 线程）真正应用。
-// 先置 invalid → 拷贝 → 置 valid 的顺序保证 timer 读到的一定是完整字符串。
 static char g_pending_emotion[24];            // 表情名最长 "embarrassed"(12)，24B 足够
 static volatile bool g_pending_emotion_valid = false;
+// 状态标签枚举：聊天任务只传枚举，中文文本由 chat_ui_apply_timer_cb（LVGL 线程）统一设置
+enum class PendingStatus {
+  kNone,
+  kIdle,          // 空闲中...
+  kLoading,       // 加载中...
+  kLoadingFailed, // 加载失败...
+  kStandby,       // 待命中...
+  kConnecting,    // 连接中...
+  kListening,     // 聆听中...
+  kSpeaking,      // 说话中...
+  kCustom,        // 自定义文本（如激活码，走 g_pending_status 缓冲）
+};
+static volatile PendingStatus g_pending_status_id = PendingStatus::kNone;
+static char g_pending_status[10];             // 仅 kCustom 时使用
+static volatile bool g_pending_status_valid = false;
+static QueueHandle_t g_msg_queue = nullptr;
+static constexpr size_t kMsgQueueLen = 4;     // 队列深度：满时丢弃新消息并打日志
 
-static void emotion_switch_timer_cb(lv_timer_t *timer) {
-  if (!g_pending_emotion_valid) {
-    return;
+// UI 待应用数据的统一消费者：表情 / 状态文字 / 聊天消息 / MCP 打开相册
+static void chat_ui_apply_timer_cb(lv_timer_t *timer) {
+  if (g_pending_status_valid) {
+    g_pending_status_valid = false;
+    const PendingStatus status = g_pending_status_id;
+    g_pending_status_id = PendingStatus::kNone;
+    if (screen_loaded && page_head.time_label != nullptr) {
+      switch (status) {
+        case PendingStatus::kIdle:          lv_label_set_text(page_head.time_label, "空闲中..."); break;
+        case PendingStatus::kLoading:       lv_label_set_text(page_head.time_label, "加载中..."); break;
+        case PendingStatus::kLoadingFailed: lv_label_set_text(page_head.time_label, "加载失败..."); break;
+        case PendingStatus::kStandby:       lv_label_set_text(page_head.time_label, "待命中..."); break;
+        case PendingStatus::kConnecting:    lv_label_set_text(page_head.time_label, "连接中..."); break;
+        case PendingStatus::kListening:     lv_label_set_text(page_head.time_label, "聆听中..."); break;
+        case PendingStatus::kSpeaking:      lv_label_set_text(page_head.time_label, "说话中..."); break;
+        case PendingStatus::kCustom:        lv_label_set_text(page_head.time_label, g_pending_status); break;
+        case PendingStatus::kNone:          break;
+      }
+    }
   }
-  g_pending_emotion_valid = false;
-  SetEmotion(g_pending_emotion);
+  // 聊天消息队列：一次性排空所有待显示消息（保留最新一条实际生效，
+  // 因为 UI 只需要显示最新内容）
+  if (g_msg_queue != nullptr) {
+    char* msg = nullptr;
+    char* latest = nullptr;
+    while (xQueueReceive(g_msg_queue, &msg, 0) == pdTRUE) {
+      free(latest);  // 前一条被更新覆盖，释放
+      latest = msg;
+    }
+    if (latest != nullptr) {
+      if (screen_loaded && guider_ui.screen_robot_label_msg != nullptr) {
+        lv_label_set_text(guider_ui.screen_robot_label_msg, latest);
+      }
+      free(latest);
+    }
+  }
+  if (g_pending_emotion_valid) {
+    g_pending_emotion_valid = false;
+    SetEmotion(g_pending_emotion);
+  }
+  if (g_pending_open_photo) {
+    g_pending_open_photo = false;
+    if (lv_scr_act() != guider_ui.screen_robot) {
+      return;  // 用户已手动离开机器人页，不再切换
+    }
+    // 复用 events_init.c 的 ui_load_scr_animation 方式切换（触发 SCREEN_LOADED 回调）
+    ui_load_scr_animation(&guider_ui, &guider_ui.screen_photo, guider_ui.screen_photo_del,
+                          &guider_ui.screen_robot_del, setup_scr_screen_photo,
+                          LV_SCR_LOAD_ANIM_OVER_LEFT, 100, 200, true, false);
+  }
+}
+
+// ---- 图片理解（识图）----
+// 参考小智官方固件 esp32_camera.cc 的 Explain()：把 JPEG 以 multipart 上传到
+// 服务端 MCP initialize 下发的 vision url，服务端调大模型识图后返回文本。
+static bool VisionDescribeImage(const std::string& question,
+                                const std::string& image_path,
+                                std::string& out_answer) {
+  const auto vision = ai_vox::Engine::GetInstance().GetVisionConfig();
+  if (!vision || vision->url.empty()) {
+    out_answer = "识图服务不可用：服务端未下发 vision 配置";
+    return false;
+  }
+
+  File file = SD_MMC.open(image_path.c_str(), "r");
+  if (!file) {
+    out_answer = "识图失败：无法打开图片 " + image_path;
+    return false;
+  }
+  const size_t file_size = file.size();
+  if (file_size == 0 || file_size > 2 * 1024 * 1024) {
+    file.close();
+    out_answer = "识图失败：图片大小超出限制(0~2MB)";
+    return false;
+  }
+
+  uint8_t* jpeg = (uint8_t*)heap_caps_malloc(file_size, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+  if (jpeg == nullptr) {
+    file.close();
+    out_answer = "识图失败：内存不足";
+    return false;
+  }
+  const size_t read_len = file.read(jpeg, file_size);
+  file.close();
+  if (read_len != file_size) {
+    free(jpeg);
+    out_answer = "识图失败：读取图片不完整";
+    return false;
+  }
+
+  static const char* kBoundary = "xiaozhi-vision-boundary";
+  std::string head;
+  head += std::string("--") + kBoundary + "\r\n";
+  head += "Content-Disposition: form-data; name=\"question\"\r\n\r\n";
+  head += question;
+  head += std::string("\r\n--") + kBoundary + "\r\n";
+  head += "Content-Disposition: form-data; name=\"file\"; filename=\"image.jpg\"\r\n";
+  head += "Content-Type: image/jpeg\r\n\r\n";
+  const std::string tail = std::string("\r\n--") + kBoundary + "--\r\n";
+
+  const size_t body_size = head.size() + file_size + tail.size();
+  uint8_t* body = (uint8_t*)heap_caps_malloc(body_size, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+  if (body == nullptr) {
+    free(jpeg);
+    out_answer = "识图失败：内存不足";
+    return false;
+  }
+  memcpy(body, head.data(), head.size());
+  memcpy(body + head.size(), jpeg, file_size);
+  memcpy(body + head.size() + file_size, tail.data(), tail.size());
+  free(jpeg);
+
+  HTTPClient http;
+  http.begin(vision->url.c_str());
+  const String device_id = WiFi.macAddress();
+  http.addHeader("Device-Id", device_id);
+  http.addHeader("Client-Id", device_id);
+  if (!vision->token.empty()) {
+    http.addHeader("Authorization", String("Bearer ") + vision->token.c_str());
+  }
+  http.addHeader("Content-Type", String("multipart/form-data; boundary=") + kBoundary);
+  http.setTimeout(60000);
+
+  bool ok = false;
+  const int http_code = http.POST(body, body_size);
+  if (http_code > 0) {
+    const String resp = http.getString();
+    cJSON* root = cJSON_Parse(resp.c_str());
+    if (root != nullptr) {
+      const cJSON* success = cJSON_GetObjectItem(root, "success");
+      const cJSON* message = cJSON_GetObjectItem(root, "message");
+      if (cJSON_IsTrue(success) && message != nullptr && message->valuestring != nullptr) {
+        out_answer = message->valuestring;
+        ok = true;
+      } else if (message != nullptr && message->valuestring != nullptr) {
+        out_answer = std::string("识图失败：") + message->valuestring;
+      } else {
+        out_answer = std::string("识图失败：") + resp.c_str();
+      }
+      cJSON_Delete(root);
+    } else {
+      out_answer = std::string("识图失败：响应格式异常 ") + resp.c_str();
+    }
+  } else {
+    out_answer = std::string("识图失败：HTTP ") + http.errorToString(http_code).c_str();
+  }
+  http.end();
+  free(body);
+  return ok;
+}
+
+// 当前正显示的本地图片 SD 路径（如 /photo/001.jpg）；非本地模式或相册为空返回空串
+static std::string GetShownImagePath() {
+  auto& album = Photo_album::GetInstance();
+  if (!album.playLocal) {
+    return "";
+  }
+  const char* name = album.getCurrentImagePath();
+  if (name == nullptr || name[0] == '\0') {
+    return "";
+  }
+  return std::string("/photo/") + name;
 }
 
 static void RobotWinLongPressCb(lv_event_t *event) {
@@ -358,28 +441,49 @@ void chat_init() {
    lv_obj_add_flag(guider_ui.screen_robot, LV_OBJ_FLAG_CLICKABLE);
    lv_obj_add_event_cb(guider_ui.screen_robot, RobotWinLongPressCb, LV_EVENT_LONG_PRESSED, nullptr);
    lv_obj_set_style_text_font(guider_ui.screen_robot_label_msg, &font_puhui_16_4,  LV_PART_MAIN|LV_STATE_DEFAULT);
+   SetEmotion("sleepy");
 
-   //lv_obj_add_flag(guider_ui.screen_robot, LV_OBJ_FLAG_CLICKABLE);
-   //lv_obj_add_flag(guider_ui.screen_robot, LV_OBJ_FLAG_GESTURE_BUBBLE);
-   //lv_obj_add_event_cb(guider_ui.screen_robot, RobotWinLongPressCb, LV_EVENT_LONG_PRESSED, nullptr);
+    // 聊天消息队列：先于 UI 定时器与聊天任务创建（生产/消费双方都用到）
+    if (g_msg_queue == nullptr) {
+      g_msg_queue = xQueueCreate(kMsgQueueLen, sizeof(char*));
+    }
 
-   // 初始化聊天列表容器时
-  //lv_obj_set_flex_grow(guider_ui.screen_robot_cont_msg, 1);
-  //lv_obj_set_flex_flow(guider_ui.screen_robot_cont_msg, LV_FLEX_FLOW_COLUMN); // 垂直排列
-  //lv_obj_set_flex_align(guider_ui.screen_robot_cont_msg,LV_FLEX_ALIGN_START,LV_FLEX_ALIGN_START,LV_FLEX_ALIGN_START);
-  //lv_obj_set_scrollbar_mode(guider_ui.screen_robot_cont_msg, LV_SCROLLBAR_MODE_OFF);
-  //lv_obj_set_scroll_dir(guider_ui.screen_robot_cont_msg, LV_DIR_VER); // 允许垂直滚动      
-  //emoji
-  //lv_img_set_src(guider_ui.screen_robot_img_emoji, &_neutral_alpha_32x32);
-  /* ---- 创建 Toast 容器 ---- */
-
-    SetEmotion("sleepy");
-
-  // 表情切换定时器：周期扫描待切换表情（本函数运行在 LVGL 线程/加载回调里，创建安全）
-  lv_timer_create(emotion_switch_timer_cb, 100, NULL);
+    // UI 待应用数据消费者：表情/状态文字/聊天消息/MCP 打开相册（LVGL 线程）
+    lv_timer_create(chat_ui_apply_timer_cb, 100, NULL);
     printf("Free INTERNAL heap: %lu\n", heap_caps_get_free_size(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT));
     printf("Largest INTERNAL free block: %lu\n", heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT));
 
+}
+
+// UI 更新只写待应用缓冲/枚举（由 chat_ui_apply_timer_cb 在 LVGL 线程真正应用），
+// 聊天任务内禁止直接调用任何 lv_* 函数
+static void set_status_label(PendingStatus status) {
+  g_pending_status_id = status;
+  g_pending_status_valid = true;
+}
+
+// 自定义文本状态（如激活码）
+static void set_status_label_custom(const char* text) {
+  strncpy(g_pending_status, text, sizeof(g_pending_status) - 1);
+  g_pending_status[sizeof(g_pending_status) - 1] = '\0';
+  g_pending_status_id = PendingStatus::kCustom;
+  g_pending_status_valid = true;
+}
+
+static void set_msg_label(const char* text) {
+  if (g_msg_queue == nullptr || text == nullptr) {
+    return;
+  }
+  // 生产者（聊天任务）堆上分配字符串，消费者应用后释放
+  char* copy = strdup(text);
+  if (copy == nullptr) {
+    return;  // 内存不足，放弃本条
+  }
+  if (xQueueSend(g_msg_queue, &copy, 0) != pdTRUE) {
+    // 队列满（LVGL 定时器间隔 100ms，正常不会积压）：丢弃并打日志
+    printf("[chat] msg queue full, drop: %s\n", text);
+    free(copy);
+  }
 }
 
 void chat_loop() {
@@ -392,7 +496,7 @@ void chat_loop() {
       printf("on text received: %s\n", text_received_event->content.c_str());
     } else if (auto activation_event = std::get_if<ai_vox::ActivationEvent>(&event)) {
       printf("activation code: %s, message: %s\n", activation_event->code.c_str(), activation_event->message.c_str());
-      lv_label_set_text(page_head.time_label,activation_event->code.c_str());
+      set_status_label_custom(activation_event->code.c_str());
     } else if (auto state_changed_event = std::get_if<ai_vox::StateChangedEvent>(&event)) {
       printf("state changed from %" PRIu8 " to %" PRIu8 "\n",
              static_cast<uint8_t>(state_changed_event->old_state),
@@ -400,42 +504,41 @@ void chat_loop() {
       switch (state_changed_event->new_state) {
         case ai_vox::ChatState::kIdle: {
           printf("Idle\n");
-          lv_label_set_text(page_head.time_label,"空闲中...");
+          set_status_label(PendingStatus::kIdle);
           break;
         }
         case ai_vox::ChatState::kInitted: {
           printf("kInitted\n");
-        
           break;
         }
         case ai_vox::ChatState::kLoading: {
           printf("Loading...\n");
-          lv_label_set_text(page_head.time_label,"加载中...");
+          set_status_label(PendingStatus::kLoading);
           break;
         }
         case ai_vox::ChatState::kLoadingFailed: {
           printf("Loading failed, please retry\n");
-          lv_label_set_text(page_head.time_label,"加载失败...");
+          set_status_label(PendingStatus::kLoadingFailed);
           break;
         }
         case ai_vox::ChatState::kStandby: {
           printf("Standby\n");
-          lv_label_set_text(page_head.time_label,"待命中...");
+          set_status_label(PendingStatus::kStandby);
           break;
         }
         case ai_vox::ChatState::kConnecting: {
           printf("Connecting...\n");
-          lv_label_set_text(page_head.time_label,"连接中...");
+          set_status_label(PendingStatus::kConnecting);
           break;
         }
         case ai_vox::ChatState::kListening: {
           printf("Listening...\n");
-          lv_label_set_text(page_head.time_label,"聆听中...");
+          set_status_label(PendingStatus::kListening);
           break;
         }
         case ai_vox::ChatState::kSpeaking: {
           printf("Speaking...\n");
-          lv_label_set_text(page_head.time_label,"说话中...");
+          set_status_label(PendingStatus::kSpeaking);
           break;
         }
         default: {
@@ -451,11 +554,11 @@ void chat_loop() {
     } else if (auto chat_message_event = std::get_if<ai_vox::ChatMessageEvent>(&event)) {
       switch (chat_message_event->role) {
         case ai_vox::ChatRole::kAssistant: {
-          lv_label_set_text(guider_ui.screen_robot_label_msg,chat_message_event->content.c_str());
+          set_msg_label(chat_message_event->content.c_str());
           break;
         }
         case ai_vox::ChatRole::kUser: {
-          lv_label_set_text(guider_ui.screen_robot_label_msg,chat_message_event->content.c_str());
+          set_msg_label(chat_message_event->content.c_str());
           break;
         }
       }
@@ -512,6 +615,24 @@ void chat_loop() {
         auto& setting = Setting::GetInstance();
         int minutes = static_cast<int>(setting.GetScreenTimeout() / 60000);
         engine.SendMcpCallResponse(mcp_tool_call_event->id, minutes);
+      } else if ("self.photo_album.open" == mcp_tool_call_event->name) {
+        // 先回结果再切界面：切换会触发机器人页卸载回调
+        engine.SendMcpCallResponse(mcp_tool_call_event->id, true);
+        g_pending_open_photo = true;
+      } else if ("self.photo_album.describe_image" == mcp_tool_call_event->name) {
+        const auto question_ptr = mcp_tool_call_event->param<std::string>("question");
+        std::string question =
+            (question_ptr != nullptr && !question_ptr->empty()) ? *question_ptr : "请描述这张图片的内容";
+        std::string answer;
+        const std::string image_path = GetShownImagePath();
+        if (image_path.empty()) {
+          engine.SendMcpCallError(mcp_tool_call_event->id,
+                                  "当前没有显示本地图片（相册为空或为网络图片），无法识图");
+        } else if (VisionDescribeImage(question, image_path, answer)) {
+          engine.SendMcpCallResponse(mcp_tool_call_event->id, answer);
+        } else {
+          engine.SendMcpCallError(mcp_tool_call_event->id, answer);
+        }
       }
     }
   }
@@ -519,11 +640,9 @@ void chat_loop() {
 }
 
 void xiaozhi_chat_task(void *pvParam){
-  while (screen_loaded) 
-  {
+  while(1) {
      chat_loop();
   }
-  vTaskDelete(NULL);
 }
 
 void robot_win_load(SCREEN_LOAD_STAUS loadstatus){
@@ -537,16 +656,22 @@ void robot_win_load(SCREEN_LOAD_STAUS loadstatus){
             chat_init();
             has_initial = true;
         }
-        const BaseType_t xCoreID = 1;
-        xTaskCreatePinnedToCore(
-                        xiaozhi_chat_task,
-                        "xiaozhi_chat_task",
-                        1024 * 20,
-                        NULL,
-                        2 | portPRIVILEGE_BIT,
-                        NULL,
-                        xCoreID
-          );
+        // 任务常驻，只在首次进入时创建，避免重复进入页面叠加多个任务
+        if (g_chat_task_handle == nullptr) {
+          const BaseType_t xCoreID = 1;
+          const BaseType_t ret = xTaskCreatePinnedToCore(
+                          xiaozhi_chat_task,
+                          "xiaozhi_chat_task",
+                          1024 * 20,
+                          NULL,
+                          2 | portPRIVILEGE_BIT,
+                          &g_chat_task_handle,
+                          xCoreID
+            );
+          if (ret != pdPASS) {
+            g_chat_task_handle = nullptr;  // 创建失败允许下次重试
+          }
+        }
    }else{
         screen_loaded = false;
    }

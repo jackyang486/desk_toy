@@ -83,6 +83,12 @@ class Photo_album {
         if(current_img >= image_files.size())current_img = 0;
        return image_files.at(current_img);
     };
+    /* 当前正显示的本地图片文件名（不含路径，如 "001.jpg"）；相册为空返回 "" */
+    const char* getCurrentImagePath(){
+        if(image_files.empty()) return "";
+        if(current_img >= image_files.size()) current_img = 0;
+        return image_files.at(current_img);
+    };
 };
 void add_image(const char* path);
 void photo_win_loaded(SCREEN_LOAD_STAUS status);

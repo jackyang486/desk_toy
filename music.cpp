@@ -37,7 +37,6 @@ static bool list_swipe_registered = false;
 static bool list_cb_registered = false;
 static uint32_t      g_last_curr_sec = 0;     // 定时器最近一次读到的播放位置（歌词整页切换用）
 static uint32_t      g_shown_sec = UINT32_MAX; // 上次已刷新到界面的秒数（去重，避免 50ms 级重排）
-static char          g_cur_file_path[128] = {0}; // 当前播放文件路径（相对 SD_MMC 挂载点）
 static const char *basePath = "S:/music";
 
 // ---------------- ID3 标签（歌词 / 专辑封面） ----------------
@@ -370,15 +369,13 @@ void Music_player::play_music()
     lv_obj_add_flag(guider_ui.screen_music_playing_img, LV_OBJ_FLAG_HIDDEN);
     char fullPath[256];
     lv_snprintf(fullPath, sizeof(fullPath), "%s/%s","/music", musicFile);
-    strncpy(g_cur_file_path, fullPath, sizeof(g_cur_file_path) - 1);
-    g_cur_file_path[sizeof(g_cur_file_path) - 1] = '\0';
     // 先用文件名占位；解析到 ID3 后再换成"歌手 - 歌名"
     lv_label_set_text(guider_ui.screen_music_label_title,musicFile);
     lv_label_set_text(guider_ui.screen_music_label_song_name,musicFile);
     // 必须先停歌再解析：SDMMC 不支持并发事务，解码任务还在读卡时解析 ID3 会读到坏数据（症状：封面在、歌词丢）。
     // stop_current 让解码任务立刻退出当前文件并关掉 SD 句柄，任务随后回到等待区（不退出任务本身）。
     music_audio.stop_current();
-    load_id3_info(g_cur_file_path);   // 解析标签：歌名 / 专辑封面 / 同步歌词
+    load_id3_info(fullPath);   // 解析标签：歌名 / 专辑封面 / 同步歌词
     lv_slider_set_value(guider_ui.screen_music_slider, 0, LV_ANIM_OFF); //切歌时，滑块归0
     check_list_item(current_music,true);
     g_last_curr_sec = 0;
