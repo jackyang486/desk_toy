@@ -82,6 +82,12 @@ class MusicPathList {
             while (ncap < pool_used_ + len) ncap *= 2;
             char *np = (char *)psram_realloc_(pool_, ncap);
             if (np == nullptr) return false;
+            if (np != pool_ && count_ > 0) {
+                // 池被 realloc 搬移：index_ 里存的都是指向池内的裸指针，必须整体平移，
+                // 否则扩容点之前的条目全部悬垂（读到已释放内存 → 空串/乱码）
+                const ptrdiff_t delta = np - pool_;
+                for (size_t i = 0; i < count_; ++i) index_[i] += delta;
+            }
             pool_ = np;
             pool_cap_ = ncap;
         }

@@ -21,7 +21,10 @@
 #include "HTTPClient.h"
 #include "cJSON.h"
 #include "photo_album.h"
+#include "music.h"
+#include "music_audio.h"
 #include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
 #include "freertos/queue.h"
 #include "src/generated/gui_guider.h"
 
@@ -35,6 +38,15 @@ static volatile bool g_pending_next_photo = false;   // MCP 请求切下一张�
 static volatile bool g_vision_mode = false;          // true：识图模式中，表情被图片占用
 static volatile bool g_pending_vision_enter = false; // MCP 请求进入识图模式（LVGL 线程执行）
 static volatile bool g_pending_vision_exit = false;  // MCP 请求退出识图模式（LVGL 线程执行）
+
+// ---- MCP 后台播歌（不进音乐页，机器人页直接播）----
+// 流程：MCP 回执 → AI TTS"好的" → 引擎进入 kListening（TTS 播完自动转）→ Suspend 睡眠
+//       （停 TTS/断 WS/关麦克风与唤醒检测）→ music_audio 后台开播 → eof 播完 → Resume 唤醒
+enum class BgMusicState { kIdle, kWaitListening, kPlaying };
+static volatile BgMusicState g_bg_music_state = BgMusicState::kIdle;
+static volatile uint16_t g_bg_music_idx = 0;   // 待播/正在播的曲库索引
+static char g_bg_music_name[64];               // 当前播放歌名（文件名，msg label 显示用）
+static volatile uint8_t g_chat_state_cache = static_cast<uint8_t>(ai_vox::ChatState::kIdle);  // 引擎状态缓存（StateChangedEvent 更新）
 
 static const std::vector<std::string> kEmotionOrder = {
     "neutral", "happy", "laughing", "funny", "sad", "angry", "crying",
@@ -168,6 +180,21 @@ void InitMcpTools() {
                             "question",
                             ai_vox::ParamSchema<std::string>{
                                 .default_value = std::string("请描述这张图片的内容"),
+                            },
+                        },
+                    }
+  );
+
+  engine.AddMcpTool("self.music_player.play_song",
+                    "Play a song from the SD card music library by name. Use this when the user "
+                    "asks to play/listen to a song or some music. The song plays directly on the "
+                    "robot screen: the robot goes to sleep during playback and wakes up after "
+                    "the song finishes.",
+                    {
+                        {
+                            "name",
+                            ai_vox::ParamSchema<std::string>{
+                                .default_value = std::string(""),
                             },
                         },
                     }
@@ -432,6 +459,29 @@ static std::string GetShownImagePath() {
   return std::string("/photo/") + name;
 }
 
+// 歌名模糊匹配：在后台扫描的曲库（文件名）里找用户说的歌。
+// 规则：整体转小写 + 双向子串（歌名∈文件名 或 文件名∈歌名），中文不受 tolower 影响。
+// 返回曲库索引；没找到返回 -1。
+static int match_song_index(const std::string& want) {
+  std::string want_low = want;
+  for (auto& c : want_low) c = tolower(static_cast<unsigned char>(c));
+  const auto& songs = music_player.getMusicPaths();
+  for (size_t i = 0; i < songs.size(); i++) {
+    std::string name = songs.at(i);
+    if (name.empty()) continue;   // 空条目（若池曾损坏残留）不能参与匹配，否则 find(空串) 必然误匹配
+    // 去掉扩展名（.mp3）
+    const size_t dot = name.rfind('.');
+    if (dot != std::string::npos && dot > 0) {
+      name.resize(dot);
+    }
+    for (auto& c : name) c = tolower(static_cast<unsigned char>(c));
+    if (name.find(want_low) != std::string::npos || want_low.find(name) != std::string::npos) {
+      return static_cast<int>(i);
+    }
+  }
+  return -1;
+}
+
 static void RobotWinLongPressCb(lv_event_t *event) {
   if (event == nullptr) {
     return;
@@ -484,6 +534,11 @@ void chat_init() {
       nullptr,
       [](void* button_handle, void* usr_data) {
         printf("boot button pressed\n");
+        if (g_bg_music_state == BgMusicState::kPlaying) {
+          // 后台播歌期间 AI 处于睡眠（麦克风/WS 已关）：Advance 会连 WS 且开输入引擎，
+          // 与音乐播放冲突。忽略按键，播完自动唤醒。
+          return;
+        }
         ai_vox::Engine::GetInstance().Advance();
       },
       nullptr));
@@ -498,6 +553,8 @@ void chat_init() {
    // 开机扫描 SD 卡相册（相册页尚未创建，show_image 内部有空指针保护不会显示），
    // 供识图模式随机选图；图片列表常驻（识图模式不随页面进出反复扫描）
    Photo_album::GetInstance().scan_image();
+   // 开机后台扫描曲库（同样不进音乐页、不碰 screen_music），供 MCP "播放xxx歌曲"匹配
+   music_player.scan_songs();
 
     // 聊天消息队列：先于 UI 定时器与聊天任务创建（生产/消费双方都用到）
     if (g_msg_queue == nullptr) {
@@ -542,6 +599,23 @@ static void set_msg_label(const char* text) {
   }
 }
 
+// engine.Resume() 只是异步入队，必须确认 ResumeInternal 真正跑完
+//（GetChatState 从 kSuspended 落回 kStandby：suspended_ 已清、wake_net 已重启）。
+// 否则 suspended_ 卡 true，之后服务器超时断连的回调被早退分支吞掉，
+// 唤醒词检测永远不重启 → "播放完歌后唤不醒"。
+static void ensure_engine_resumed() {
+  auto& engine = ai_vox::Engine::GetInstance();
+  engine.Resume();
+  const uint32_t t = millis();
+  while (engine.GetChatState() != ai_vox::ChatState::kStandby &&
+         millis() - t < 2000) {
+    vTaskDelay(pdMS_TO_TICKS(10));
+  }
+  if (engine.GetChatState() != ai_vox::ChatState::kStandby) {
+    engine.Resume();  // 重试一次
+  }
+}
+
 void chat_loop() {
 
   auto& engine = ai_vox::Engine::GetInstance();
@@ -557,6 +631,7 @@ void chat_loop() {
       printf("state changed from %" PRIu8 " to %" PRIu8 "\n",
              static_cast<uint8_t>(state_changed_event->old_state),
              static_cast<uint8_t>(state_changed_event->new_state));
+      g_chat_state_cache = static_cast<uint8_t>(state_changed_event->new_state);  // 后台播歌状态机观测用
       switch (state_changed_event->new_state) {
         case ai_vox::ChatState::kIdle: {
           printf("Idle\n");
@@ -701,9 +776,91 @@ void chat_loop() {
         } else {
           engine.SendMcpCallError(mcp_tool_call_event->id, answer);
         }
+      } else if ("self.music_player.play_song" == mcp_tool_call_event->name) {
+        // 后台播歌：不进音乐页，AI 睡眠后直接在机器人页播，播完自动唤醒
+        const auto name_ptr = mcp_tool_call_event->param<std::string>("name");
+        if (name_ptr == nullptr || name_ptr->empty()) {
+          engine.SendMcpCallError(mcp_tool_call_event->id, "Missing valid argument: name");
+        } else {
+          const int idx = match_song_index(*name_ptr);
+          if (idx < 0) {
+            // 找不到歌：把曲库里前几首带回给 AI，让它口头推荐
+            std::string lib;
+            const auto& songs = music_player.getMusicPaths();
+            for (size_t i = 0; i < songs.size() && i < 5; i++) {
+              lib += songs.at(i);
+              if (i + 1 < songs.size() && i + 1 < 5) lib += "、";
+            }
+            engine.SendMcpCallError(mcp_tool_call_event->id,
+                                    "曲库里没有找到\"" + *name_ptr + "\"" +
+                                    (lib.empty() ? "（曲库为空）" : "。曲库现有：" + lib));
+          } else {
+            engine.SendMcpCallResponse(mcp_tool_call_event->id, true);
+            g_bg_music_idx = static_cast<uint16_t>(idx);
+            strncpy(g_bg_music_name, music_player.getMusicPaths().at(idx), sizeof(g_bg_music_name) - 1);
+            g_bg_music_name[sizeof(g_bg_music_name) - 1] = '\0';
+            // 去掉扩展名（.mp3），label 只显示纯歌名
+            char* dot = strrchr(g_bg_music_name, '.');
+            if (dot != nullptr) *dot = '\0';
+            g_bg_music_state = BgMusicState::kWaitListening;  // 等 TTS 播完（kListening）再睡眠开播
+          }
+        }
       }
     }
   }
+
+  // ---- 后台播歌状态机（聊天任务，不触碰 LVGL） ----
+  if (g_bg_music_state == BgMusicState::kWaitListening) {
+    // TTS 应答播完 → 引擎转 kListening；会话自然结束则 kStandby。两者都说明扬声器已空闲，
+    // 可以让 AI 睡眠并开播（避免 TTS 与音乐同时写 codec）
+    if (g_chat_state_cache == static_cast<uint8_t>(ai_vox::ChatState::kListening) ||
+        g_chat_state_cache == static_cast<uint8_t>(ai_vox::ChatState::kStandby)) {
+      engine.Suspend();  // 停 TTS/断 WS/关麦克风与唤醒检测 → kStandby（异步入队）
+      // Suspend 只是入队，必须等 SuspendInternal 真正跑完（引擎落到 kStandby，
+      // WS 已关闭）再开播。否则 WS 还没断，服务器残余 TTS 的 "tts start" 会把
+      // 引擎拉回 kSpeaking 重建输出引擎，与音乐解码任务并发写同一个 I2S 通道，
+      // 写操作互相卡死 → 音乐无声。等不到就放弃本次播放。
+      const uint32_t t0 = millis();
+      while (engine.GetChatState() != ai_vox::ChatState::kSuspended &&
+             millis() - t0 < 3000) {
+        vTaskDelay(pdMS_TO_TICKS(10));
+      }
+      vTaskDelay(pdMS_TO_TICKS(100));  // 给 ws close 收尾留缓冲
+      if (engine.GetChatState() == ai_vox::ChatState::kSuspended && music_audio.begin()) {
+        // 不可见的第二行，所以只显示 "♪ 歌名"，把宽度留给歌名
+        if (music_player.play_song_bg(g_bg_music_idx)) {
+          char buf[80];
+          snprintf(buf, sizeof(buf), "%s", g_bg_music_name);
+          set_msg_label(buf);
+          g_bg_music_state = BgMusicState::kPlaying;
+        } else {
+          // 曲库条目异常（索引越界/空条目）：不播，直接唤醒
+          music_audio.end();
+          ensure_engine_resumed();
+          g_bg_music_state = BgMusicState::kIdle;
+        }
+      } else {
+        // Suspend 超时或解码任务创建失败：立即唤醒，不让 AI 一直沉睡
+        ensure_engine_resumed();
+        g_bg_music_state = BgMusicState::kIdle;
+      }
+    }
+  } else if (g_bg_music_state == BgMusicState::kPlaying) {
+    // 引擎意外醒来（kSpeaking/kListening：服务器残留 TTS 通过未断的 WS 触发）
+    // 说明没睡干净，此时输出引擎与音乐解码任务会并发写 codec → 必须停歌让 TTS 播完
+    if (g_chat_state_cache == static_cast<uint8_t>(ai_vox::ChatState::kSpeaking) ||
+        g_chat_state_cache == static_cast<uint8_t>(ai_vox::ChatState::kListening)) {
+      music_audio.end();
+      ensure_engine_resumed();
+      g_bg_music_state = BgMusicState::kIdle;
+    } else if (music_audio.take_eof()) {
+      // 播完（eof 含解码失败）：释放解码任务恢复 codec 默认配置，唤醒 AI
+      music_audio.end();
+      ensure_engine_resumed();  // 确认 ResumeInternal 真正跑完（wake_net 已重启），否则唤醒词失效
+      g_bg_music_state = BgMusicState::kIdle;
+    }
+  }
+
   vTaskDelay(pdMS_TO_TICKS(10));
 }
 

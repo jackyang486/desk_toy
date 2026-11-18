@@ -384,6 +384,32 @@ void Music_player::play_music()
     // 下发新播放命令（任务收到后重新开文件，首帧解码成功时自动按真实采样率/声道数重开 codec）
     music_audio.play(fullPath);
 }
+// ---------------- MCP 后台播歌（不进音乐页，不碰 screen_music 的 LVGL 对象） ----------------
+
+// 开机后台扫描曲库：与 music_loop(LOADED) 相同的扫描方式，但不填列表面板/不显示。
+// 供 MCP "播放xxx歌曲" 匹配歌名用（列表常驻内存，避免每次 MCP 请求都读 SD 卡）。
+void Music_player::scan_songs() {
+    if (music_audio.is_active()) return;  // 正在播放时 SDMMC 被解码任务独占，不重扫
+    // 曲库存在（PSRAM 池，占用极小）就不重扫，省去每次读 SD 卡遍历目录
+    if (!music_files.empty()) return;
+    board.scanDirEach(basePath, music_path_sink, &music_files, MP3_TYPE);
+}
+
+// 后台播放第 idx 首（0-based）：只走解码任务 + codec，全程不触碰 screen_music。
+// 调用前提：music_audio.begin() 已执行（解码任务存在）、引擎输出侧空闲（AI 已睡眠）。
+bool Music_player::play_song_bg(uint16_t idx) {
+    if (idx >= music_files.size()) return false;
+    const char *name = music_files.at(idx);
+    if (name == nullptr || name[0] == '\0') return false;   // 空条目（池损坏残留）不播
+    current_music = idx;
+    char fullPath[256];
+    lv_snprintf(fullPath, sizeof(fullPath), "%s/%s", "/music", name);
+    // 若上一首还在播：先停（SDMMC 不支持并发事务），再发新播放命令
+    music_audio.stop_current();
+    music_audio.play(fullPath);
+    return true;
+}
+
 // 生成 [min, max] 范围内的随机整数（闭区间）
 int getRandomInt(int min, int max) {
     // 使用静态变量确保引擎和分布只初始化一次，提高效率
@@ -688,9 +714,7 @@ void Music_player::music_loop(SCREEN_LOAD_STAUS playerLoadStatus){
         musicTag.unload();              // 进页面先清掉上一轮残留的标签（下次 load 时才分配）
         list_start_index = 0;           // 列表回到首页，避免与上次退出时的滑动位置错位
         list_is_touching = false;
-        // 路径全部写进 PSRAM 池，内部堆里不再有几十个 String 小块
-        board.scanDirEach(basePath, music_path_sink, &music_files, MP3_TYPE);
-        printf("[MEM][music] scanDir n=%u\n", (unsigned)music_files.size());
+        scan_songs();
         // 事件回调只注册一次：重复注册会让 handler 被重复调用并永久多占一份内存
         if (!list_cb_registered) {
             lv_obj_add_event_cb(guider_ui.screen_music_list_music, music_list_swipe_event_handler, LV_EVENT_ALL, NULL);
@@ -730,7 +754,8 @@ void Music_player::music_loop(SCREEN_LOAD_STAUS playerLoadStatus){
         musicTag.unload();
         music_audio.end();
         rgb_led_off();
-        music_files.clear();
+        // 曲库列表保留（clear 只重置计数不释放池内存，占用极小）：
+        // MCP "播放xxx歌曲" 随时要用它匹配歌名，退页清掉会导致曲库为空
         lv_obj_clean(guider_ui.screen_music_list_music);
         list_swipe_registered = false;
     }

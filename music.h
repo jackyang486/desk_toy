@@ -33,6 +33,11 @@ class Music_player {
     void music_right_btn(void);
     void play_music(void);
     void  fill_music_list_panel(void);
+    // MCP 播歌：后台扫描曲库（不进音乐页、不碰任何 screen_music 对象），供匹配歌名用
+    void scan_songs(void);
+    // MCP 播歌：后台播放第 idx 首（0-based），成功返回 true。不操作任何 screen_music 的
+    // LVGL 对象（screen_music 可能尚未创建）。调用前须先 music_audio.begin()。
+    bool play_song_bg(uint16_t idx);
     
     uint16_t getCurrentMusic(){
        return current_music;
@@ -70,4 +75,5 @@ class Music_player {
 };
 void add_music(const char* path);
 void music_player_load(SCREEN_LOAD_STAUS playerLoadStatus);
+extern Music_player music_player;   // 全局唯一实例（music.cpp 定义），MCP 播歌跨文件使用
 #endif

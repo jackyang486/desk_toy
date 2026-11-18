@@ -45,8 +45,11 @@ static bool photo_path_sink(void *ctx, const char *name) {
     return static_cast<MusicPathList *>(ctx)->push(name);
 }
 void Photo_album::scan_image(){
-     board.scanDirEach(basePath, photo_path_sink, &image_files, IMG_TYPE);
-     show_image();
+    // 图库存在（PSRAM 池，占用极小）就不重扫，省去重复读 SD 卡遍历目录
+    if (image_files.empty()) {
+        board.scanDirEach(basePath, photo_path_sink, &image_files, IMG_TYPE);
+    }
+    show_image();
 }
 
 // 随机挑选一张本地图片：返回完整显示路径（成员缓冲 lv_img_path，单例常驻，
