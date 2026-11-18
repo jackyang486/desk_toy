@@ -8,14 +8,6 @@
 #include "SD_MMC.h"
 #include "WiFi.h"
 #include "setting.h"
-// 网络电台：用 arduino-audio-tools 的 URLStream 做数据源（自带 TLS/chunked/302 重定向）。
-// 注：为配合 arduino-esp32 core 3.x 打了 5 个补丁，见 libraries/arduino-audio-tools-main：
-//   URLStream.h        socket 超时用 setConnectionTimeout + 握手超时单位（秒）
-//   URLStream.h        setTimeout 单位
-//   HttpRequest.h      setTimeout 单位
-//   HttpChunkReader.h  chunk 边界竞态 + 空行跳过
-//   HttpLineReader.h   长度行拆包提前退出 + 越界写
-// 升级该库后这些补丁会丢失，需要重新打。
 #include "AudioToolsConfig.h"
 #include "AudioTools/CoreAudio/AudioHttp/URLStream.h"
 #include "components/espressif/esp_audio_codec/esp_mp3_dec.h"
@@ -48,13 +40,8 @@ static volatile bool g_paused = false;
 static volatile bool g_eof = false;               // 播完/打不开，待 LVGL 线程取走
 static volatile uint32_t g_pos_ms = 0;            // 当前播放位置 ms（任务推进）
 static volatile uint32_t g_dur_ms = 0;            // 时长估算 ms（任务推进）
-static volatile uint8_t  g_volume = 100;          // 0~100 软件音量
 static std::atomic<uint8_t> g_level{0};           // 响度 0~255（任务写、LVGL 线程读）
 static volatile uint32_t g_level_ms = 0;          // 最近一次更新响度的时刻
-// 三块大缓冲运行时从 PSRAM 一次性惰性分配、永不释放（不产生碎片）：
-// MP3 解码的输入/输出/任务栈对访存速度不敏感，放 PSRAM 归还 ~18KB 内部 SRAM。
-// 注：不能用 EXT_RAM_BSS_ATTR——本环境 sdkconfig 未开
-// CONFIG_SPIRAM_ALLOW_BSS_SEG_EXTERNAL_MEMORY，linker 也没有 .ext_ram.bss 段。
 static uint8_t    *g_inbuf  = nullptr;   // DEC_INBUF_SIZE
 static uint8_t    *g_outbuf = nullptr;   // DEC_OUTBUF_SIZE
 static StackType_t *g_stack = nullptr;   // DEC_TASK_STACK（任务栈，已开 ALLOW_STACK_EXTERNAL）
@@ -196,15 +183,9 @@ static bool decode_one_file(const char *full_path,
                 }
             }
 
-            // 响度取样必须在音量衰减之前：滑块音量一低，PCM 被平方曲线压得很小，
-            // 测出来 level 只有个位数，RGB 灯就永远只有底部几颗绿灯在闪
+            // 响度取样：PCM 满幅直写 codec（音量统一由 ES8311 硬件寄存器控制），
+            // RGB 灯效天然不受音量影响
             vu_from_pcm(p, nsamples);
-            // 软件音量：滑块百分比平方曲线，等价于原 Audio 库的 setVolume 行为
-            const uint8_t vol = g_volume;
-            if (vol < 100) {
-                const int32_t sc = (int32_t)vol * vol;   // /10000 = (vol/100)^2
-                for (size_t i = 0; i < nsamples; i++) p[i] = (int16_t)((int32_t)p[i] * sc / 10000);
-            }
             if (dev) dev->Write(p, nsamples);   // 阻塞写，DMA 满自然节流
         }
     }
@@ -527,11 +508,6 @@ static void decode_stream(const char *url, const std::shared_ptr<ai_vox::AudioDe
                 const size_t nsamples = out.decoded_size / 2;
                 int16_t *p = (int16_t *)g_outbuf;
                 vu_from_pcm(p, nsamples);
-                const uint8_t vol = g_volume;
-                if (vol < 100) {
-                    const int32_t sc = (int32_t)vol * vol;
-                    for (size_t i = 0; i < nsamples; i++) p[i] = (int16_t)((int32_t)p[i] * sc / 10000);
-                }
                 if (dev) dev->Write(p, nsamples);           // 阻塞写，DMA 满即节流（电台天然实时）
             }
         }
@@ -710,12 +686,10 @@ bool MusicAudio::take_eof() {
     return true;
 }
 
-void MusicAudio::set_volume(uint8_t percent) {
-    g_volume = percent > 100 ? 100 : percent;
-}
+// ---------------- 给 setting.cpp 的钩子：解码任务是否在跑（调音量时决定是否播提示音） ----------------
 
-uint8_t MusicAudio::volume() const {
-    return g_volume;
+bool music_is_active(void) {
+    return g_run;
 }
 
 uint8_t MusicAudio::level() const {
@@ -724,17 +698,4 @@ uint8_t MusicAudio::level() const {
 
 uint32_t MusicAudio::level_ms() const {
     return g_level_ms;
-}
-
-// ---------------- 给 setting.cpp 的音量路由钩子 ----------------
-
-// 音乐页播放时：软件音量直接作用在解码 PCM 上，不碰 codec 硬件音量
-bool music_apply_volume(void) {
-    if (!g_run) return false;
-    music_audio.set_volume((uint8_t)Setting::GetInstance().GetVolume());
-    return true;
-}
-
-bool music_is_active(void) {
-    return g_run;
 }

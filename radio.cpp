@@ -44,9 +44,6 @@ void Radio::ui_refresh() {
 /* 启动播放引擎（复用音乐页那套：静态解码任务 + PSRAM 缓冲 + PCM 直写 ES8311） */
 bool Radio::ensure_engine() {
     if (music_audio.is_active()) return true;
-    // 硬件音量拉满，响度只由解码 PCM 的软件音量决定（与音乐页一致）
-    Setting::GetInstance().PreparePlaybackVolume();
-    music_audio.set_volume((uint8_t)Setting::GetInstance().GetVolume());
     if (!music_audio.begin()) {
         printf("[radio] audio engine start failed\n");
         return false;
@@ -100,7 +97,6 @@ void Radio::radio_screen_load(SCREEN_LOAD_STAUS status){
         // 退页面：停流 + 释放解码任务，codec 恢复默认 16k 单声道给 AI_VOX 用
         StopPlay();
         music_audio.end();
-        Setting::GetInstance().FlushVolumeToHardware();
         playing_ = false;
     }
 }

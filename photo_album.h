@@ -19,6 +19,10 @@ typedef struct {
 class Photo_album {
   private:
     MusicPathList image_files;   // 路径放 PSRAM 池，不再用 vector<String> 切碎内部堆
+    // lv_image_set_src() 对文件路径只保存指针不拷贝，解码发生在之后的绘制阶段，
+    // 所以路径缓冲必须常驻：栈上 char[256] 函数返回后就是野指针。
+    // 单例成员天然满足（对象永久存活）；本地显示与识图模式共用这一个缓冲。
+    char lv_img_path[256] = {0};
     uint8_t current_img;
     uint8_t online_active_idx_ = 0;
     bool online_active_ = false;
@@ -68,11 +72,9 @@ class Photo_album {
     void setCurrentImg(uint8_t currentImg){
        current_img = currentImg;
     };
-    /* 退出相册页时释放文件名列表，下次进页重新扫描（池容量保留复用） */
     void release_file_list(){
         image_files.clear();
         current_img = 0;
-        hasInitial = false;
     };
     int getImageFilesSize(){
        return  image_files.size();
@@ -89,6 +91,7 @@ class Photo_album {
         if(current_img >= image_files.size()) current_img = 0;
         return image_files.at(current_img);
     };
+    const char* getRandomImagePath();
 };
 void add_image(const char* path);
 void photo_win_loaded(SCREEN_LOAD_STAUS status);

@@ -1,8 +1,7 @@
 #include "setting.h"
 #include "ESP32_board.h"
 
-// music.cpp 提供的音量路由钩子：音乐页解码任务直连 codec，软件音量作用在解码 PCM 上
-extern bool music_apply_volume(void);
+// music_audio.cpp 提供：音乐解码任务是否在跑（决定调音量时是否播提示音）
 extern bool music_is_active(void);
 #include "ESP32_board.h"
 #include <Preferences.h>
@@ -51,7 +50,7 @@ void Setting::Init() {
 void volume_value_change(uint8_t volume) {
     auto& setting = Setting::GetInstance();
     setting.SetVolume(static_cast<uint16_t>(volume));
-    setting.ApplyVolume(); //播放页里走软件音量，其余场景写硬件音量
+    setting.ApplyVolume(); //直接写 ES8311 硬件音量
     if (!music_is_active()) {
         board.playMp3(kNotification0mp3, sizeof(kNotification0mp3));
     }
@@ -74,36 +73,18 @@ void Setting::ApplyBrightness() {
     ledcWrite(TFT_BL_PIN, raw);
 }
 
-// 只有 AI_VOX 独占 codec 时才能安全写 ES8311 寄存器
+// 音量统一走 ES8311 硬件寄存器：AI_VOX 的 set_volume 期望 0~100 百分比
+// （esp_codec_dev_set_out_vol），不再做 0~255 映射
 void Setting::ApplyHardwareVolume() {
     auto audio_device = board.getAudioDeviceEs8311();
     if (audio_device) {
-        uint16_t raw = static_cast<uint16_t>(volume_* 255 / 100);
-        audio_device->set_volume(raw);
+        audio_device->set_volume(volume_);
     }
-    hw_volume_dirty_ = false;
 }
 
 void Setting::ApplyVolume() {
-    // 音乐播放页：解码任务直连 AudioDeviceEs8311，软件音量作用在解码 PCM 上（music.cpp 提供）
-    if (music_apply_volume()) {
-        return;
-    }
-    ApplyHardwareVolume();
-}
-
-// 进播放页、还没 disable_i2s() 时调用：硬件音量拉满，响度完全交给软件音量，
-// 这样同一个滑块位置在播放页和其它页面听起来一致（避免两层衰减叠加）。
-void Setting::PreparePlaybackVolume() {
-    auto dev = board.getAudioDeviceEs8311();
-    if (dev == nullptr) return;
-    dev->set_volume(255);
-    hw_volume_dirty_ = true;   // 退出播放页时按 volume_ 恢复硬件音量
-}
-
-// 退出播放页（audio 已 delete、reconfigure_gpio() 已把 codec 让渡回 AI_VOX）后调用
-void Setting::FlushVolumeToHardware() {
-    if (!hw_volume_dirty_) return;
+    // MP3/电台/AI 对话共用同一个 ES8311 寄存器：任何页面拖滑块都直接写硬件生效，
+    // 无需页面间让渡/补写（旧的"播放页软件音量 + 硬件拉满"方案已废弃）
     ApplyHardwareVolume();
 }
 

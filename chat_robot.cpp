@@ -29,7 +29,12 @@ static bool screen_loaded = false;
 static bool has_initial = false;
 static std::string g_current_emotion = "";
 static TaskHandle_t g_chat_task_handle = nullptr;
-static volatile bool g_pending_open_photo = false;  // MCP 请求打开相册（由 lv_timer 在 LVGL 线程执行切换）
+static volatile bool g_pending_next_photo = false;   // MCP 请求切下一张照片/图（LVGL 线程执行）
+// ---- 识图模式：机器人屏直接显示 SD 卡随机图片（代替表情），AI 可对当前图片识图 ----
+// 显示路径复用 Photo_album 单例的 lv_img_path 成员缓冲（取到指针立即用于 lv_*_set_src）
+static volatile bool g_vision_mode = false;          // true：识图模式中，表情被图片占用
+static volatile bool g_pending_vision_enter = false; // MCP 请求进入识图模式（LVGL 线程执行）
+static volatile bool g_pending_vision_exit = false;  // MCP 请求退出识图模式（LVGL 线程执行）
 
 static const std::vector<std::string> kEmotionOrder = {
     "neutral", "happy", "laughing", "funny", "sad", "angry", "crying",
@@ -135,15 +140,29 @@ void InitMcpTools() {
   );
 
   engine.AddMcpTool("self.photo_album.open",
-                    "Open the photo album screen to browse pictures stored on the SD card. "
-                    "Use this when the user asks to open the photo album / browse pictures.",
+                    "Enter image recognition (vision) mode: show a random picture from the "
+                    "SD card on the robot screen instead of the emotion face. Use this when "
+                    "the user asks to open the photo album / browse pictures / recognize an image.",
+                    {}
+  );
+
+  engine.AddMcpTool("self.photo_album.close",
+                    "Exit image recognition (vision) mode and restore the robot emotion face. "
+                    "Use this when the user asks to close the picture / exit the photo album.",
+                    {}
+  );
+
+  engine.AddMcpTool("self.photo_album.next_image",
+                    "Switch to the next picture: in vision mode show another random picture on "
+                    "the robot screen; in the photo album screen switch to the next album picture. "
+                    "Use this when the user asks to see the next photo.",
                     {}
   );
 
   engine.AddMcpTool("self.photo_album.describe_image",
-                    "Describe the picture currently displayed in the photo album, "
-                    "or answer questions about it. Only usable while the photo album "
-                    "screen is open and a local picture is shown.",
+                    "Describe the picture currently displayed (in vision mode on the robot screen, "
+                    "or in the photo album), or answer questions about it. Only usable while a "
+                    "local picture is shown.",
                     {
                         {
                             "question",
@@ -159,6 +178,9 @@ void InitMcpTools() {
 void SetEmotion(const std::string& emotion) {
   if (guider_ui.screen_robot == nullptr) {
     return;
+  }
+  if (g_vision_mode) {
+    return;  // 识图模式中：机器人屏背景被图片占用，退出识图模式后统一恢复表情
   }
 
   static const std::map<std::string, const char*> emotion_map = {
@@ -213,7 +235,7 @@ enum class PendingStatus {
 static volatile PendingStatus g_pending_status_id = PendingStatus::kNone;
 static char g_pending_status[10];             // 仅 kCustom 时使用
 static volatile bool g_pending_status_valid = false;
-static QueueHandle_t g_msg_queue = nullptr;
+ static QueueHandle_t g_msg_queue = nullptr;
 static constexpr size_t kMsgQueueLen = 4;     // 队列深度：满时丢弃新消息并打日志
 
 // UI 待应用数据的统一消费者：表情 / 状态文字 / 聊天消息 / MCP 打开相册
@@ -256,15 +278,36 @@ static void chat_ui_apply_timer_cb(lv_timer_t *timer) {
     g_pending_emotion_valid = false;
     SetEmotion(g_pending_emotion);
   }
-  if (g_pending_open_photo) {
-    g_pending_open_photo = false;
-    if (lv_scr_act() != guider_ui.screen_robot) {
-      return;  // 用户已手动离开机器人页，不再切换
+  if (g_pending_vision_enter) {
+    g_pending_vision_enter = false;
+    if (lv_scr_act() == guider_ui.screen_robot && guider_ui.screen_robot != nullptr) {
+      const char* path = Photo_album::GetInstance().getRandomImagePath();
+      if (path != nullptr && path[0] != '\0') {
+        g_vision_mode = true;
+        // 表情与图片共用机器人屏背景图：识图模式直接换背景
+        lv_obj_set_style_bg_img_src(guider_ui.screen_robot, path, LV_PART_MAIN | LV_STATE_DEFAULT);
+        lv_obj_set_style_bg_image_opa(guider_ui.screen_robot, 255, LV_PART_MAIN | LV_STATE_DEFAULT);
+      }
     }
-    // 复用 events_init.c 的 ui_load_scr_animation 方式切换（触发 SCREEN_LOADED 回调）
-    ui_load_scr_animation(&guider_ui, &guider_ui.screen_photo, guider_ui.screen_photo_del,
-                          &guider_ui.screen_robot_del, setup_scr_screen_photo,
-                          LV_SCR_LOAD_ANIM_OVER_LEFT, 100, 200, true, false);
+  }
+  if (g_pending_vision_exit) {
+    g_pending_vision_exit = false;
+    if (g_vision_mode) {
+      g_vision_mode = false;
+      g_current_emotion = "";  // 清空去重标记，强制表情重绘
+      SetEmotion("happy");
+    }
+  }
+  if (g_pending_next_photo) {
+    g_pending_next_photo = false;
+    if (g_vision_mode) {
+      // 识图模式：换一张随机图片（保持识图模式）
+      const char* path = Photo_album::GetInstance().getRandomImagePath();
+      if (path != nullptr && path[0] != '\0') {
+        lv_obj_set_style_bg_img_src(guider_ui.screen_robot, path, LV_PART_MAIN | LV_STATE_DEFAULT);
+        lv_obj_set_style_bg_image_opa(guider_ui.screen_robot, 255, LV_PART_MAIN | LV_STATE_DEFAULT);
+      }
+    }
   }
 }
 
@@ -367,9 +410,18 @@ static bool VisionDescribeImage(const std::string& question,
   return ok;
 }
 
-// 当前正显示的本地图片 SD 路径（如 /photo/001.jpg）；非本地模式或相册为空返回空串
+// 当前正显示的本地图片 SD 路径（如 /photo/001.jpg）；
+// 识图模式返回机器人屏上显示的图片（getRandomImagePath 已把 current_img 指向它）；
+// 相册页返回当前图；其余返回空串
 static std::string GetShownImagePath() {
   auto& album = Photo_album::GetInstance();
+  if (g_vision_mode) {
+    const char* name = album.getCurrentImagePath();
+    if (name == nullptr || name[0] == '\0') {
+      return "";
+    }
+    return std::string("/photo/") + name;
+  }
   if (!album.playLocal) {
     return "";
   }
@@ -441,7 +493,11 @@ void chat_init() {
    lv_obj_add_flag(guider_ui.screen_robot, LV_OBJ_FLAG_CLICKABLE);
    lv_obj_add_event_cb(guider_ui.screen_robot, RobotWinLongPressCb, LV_EVENT_LONG_PRESSED, nullptr);
    lv_obj_set_style_text_font(guider_ui.screen_robot_label_msg, &font_puhui_16_4,  LV_PART_MAIN|LV_STATE_DEFAULT);
-   SetEmotion("sleepy");
+   SetEmotion("happy");
+
+   // 开机扫描 SD 卡相册（相册页尚未创建，show_image 内部有空指针保护不会显示），
+   // 供识图模式随机选图；图片列表常驻（识图模式不随页面进出反复扫描）
+   Photo_album::GetInstance().scan_image();
 
     // 聊天消息队列：先于 UI 定时器与聊天任务创建（生产/消费双方都用到）
     if (g_msg_queue == nullptr) {
@@ -616,9 +672,21 @@ void chat_loop() {
         int minutes = static_cast<int>(setting.GetScreenTimeout() / 60000);
         engine.SendMcpCallResponse(mcp_tool_call_event->id, minutes);
       } else if ("self.photo_album.open" == mcp_tool_call_event->name) {
-        // 先回结果再切界面：切换会触发机器人页卸载回调
+        // 进入识图模式（不切屏）：机器人屏背景换成随机图片，表情隐藏
+        if (Photo_album::GetInstance().getImageFilesSize() == 0) {
+          engine.SendMcpCallError(mcp_tool_call_event->id, "相册为空，SD 卡上没有图片");
+        } else {
+          engine.SendMcpCallResponse(mcp_tool_call_event->id, true);
+          g_pending_vision_enter = true;
+        }
+      } else if ("self.photo_album.close" == mcp_tool_call_event->name) {
+        // 退出识图模式：恢复进入前的表情显示
         engine.SendMcpCallResponse(mcp_tool_call_event->id, true);
-        g_pending_open_photo = true;
+        g_pending_vision_exit = true;
+      } else if ("self.photo_album.next_image" == mcp_tool_call_event->name) {
+        // 先回结果，再由 chat_ui_apply_timer_cb 在 LVGL 线程切图（show_image 会动 LVGL 对象）
+        engine.SendMcpCallResponse(mcp_tool_call_event->id, true);
+        g_pending_next_photo = true;
       } else if ("self.photo_album.describe_image" == mcp_tool_call_event->name) {
         const auto question_ptr = mcp_tool_call_event->param<std::string>("question");
         std::string question =
@@ -674,5 +742,7 @@ void robot_win_load(SCREEN_LOAD_STAUS loadstatus){
         }
    }else{
         screen_loaded = false;
+        // 离开机器人页：屏幕对象即将销毁/重建，识图模式显示状态失效，复位防止下次进页卡在"表情不显示"
+        g_vision_mode = false;
    }
 }

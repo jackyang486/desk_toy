@@ -21,10 +21,7 @@
 #include "radio.h"
 #include "lottie.h"
 #include "game.h"
-#include <TimeLib.h>
-#include <vector>
-#include <WiFi.h>
-#include <WiFiUdp.h>
+#include "battery.h"
 
 /*==================== NTP 时间同步（已从 weather.cpp 迁移到此处） ====================*/
 // NTP服务器
@@ -301,6 +298,7 @@ void main_sreen_loaded(SCREEN_LOAD_STAUS loadStatus){
 void setup() {
   Serial.begin(115200);
   lvgl_user_init();    //lvgl初始化
+  battery_init();      //电量检测：ADC 初始化 + 30s 检测定时器（内部创建 LVGL 定时器）
   board.board_init();  //ESP32S3硬件初始化
   usb_disk_init();     //U盘模式：开机注册 USB MSC 接口（平时隐藏介质，进入模式才暴露 SD 卡）
   auto& wifiConfig = wifi_config::GetInstance(); 

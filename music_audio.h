@@ -5,12 +5,13 @@
 
 // MP3 播放引擎（单例 music_audio）
 //
-// 数据链路：SD_MMC → esp_audio_simple_dec 解码 → 软件音量/淡入 → AudioDeviceEs8311::Write()
+// 数据链路：SD_MMC → esp_audio_simple_dec 解码 → 淡入 → AudioDeviceEs8311::Write()
+// 音量：统一由 Setting 写 ES8311 硬件寄存器（MP3/电台/AI 对话共用同一寄存器）
 // 不再使用 ESP32-audioI2S 的 Audio 对象（49KB 堆借还 + 独占 I2S_NUM_0 + 抢占 codec 引脚），
 // codec 全程归 AI_VOX 的 I2S_NUM_1，没有任何引脚让渡动作。
 //
 // 线程模型：
-//   LVGL 线程：begin/end/play/stop_current/toggle_pause/set_volume、读时间与响度
+//   LVGL 线程：begin/end/play/stop_current/toggle_pause、读时间与响度
 //   解码任务：静态栈 24KB，静态输入输出缓冲，只跑 decode 循环
 class MusicAudio {
 public:
@@ -40,10 +41,6 @@ public:
 
     // 播完/打不开：任务置位，LVGL 线程取走（取走即清零）
     bool take_eof();
-
-    // 0~100 软件音量（平方曲线，作用在解码 PCM 上）
-    void set_volume(uint8_t percent);
-    uint8_t volume() const;
 
     // 当前响度 0~255（解码任务算 PCM RMS），供 WS2812B 灯用；level_ms() 是最近更新时刻
     uint8_t  level() const;

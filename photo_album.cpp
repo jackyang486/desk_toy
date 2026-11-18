@@ -11,10 +11,6 @@
 static const char *basePath = "S:/photo";
 static lv_timer_t *carousel_timer = NULL;
 
-// lv_image_set_src() 对文件路径只保存指针不拷贝，解码发生在之后的绘制阶段，
-// 所以路径缓冲必须是静态的：栈上 char[256] 函数返回后就是野指针。
-static char lv_img_path[256];
-
 // 只校验 SOI+APPn 标志（FF D8 FF）：原来的 FF D8 FF E0 00 10 "JFIF" 太严，
 // 网上大量 Exif（FF D8 FF E1）图片会被误判为非法而丢弃。
 static bool is_jpeg(const uint8_t* data, size_t len) {
@@ -33,6 +29,7 @@ Photo_album::Photo_album():playLocal(true),nextBtnCheck(false),current_img(0),ha
 //展示本地图片显示
 void Photo_album::show_image()
 {
+    if(guider_ui.screen_photo_view == nullptr) return;  // 相册页尚未创建（如开机时仅扫描图片），不显示
     if(image_files.empty()) {
         lv_image_set_src(guider_ui.screen_photo_view, NULL);
         return;
@@ -51,6 +48,17 @@ void Photo_album::scan_image(){
      board.scanDirEach(basePath, photo_path_sink, &image_files, IMG_TYPE);
      show_image();
 }
+
+// 随机挑选一张本地图片：返回完整显示路径（成员缓冲 lv_img_path，单例常驻，
+// LVGL 异步解码安全），并同步 current_img 方便后续"下一张"衔接；空目录返回 ""。
+// 供识图模式在机器人屏显示。
+const char* Photo_album::getRandomImagePath(){
+    if(image_files.empty()) return "";
+    const size_t idx = esp_random() % image_files.size();
+    current_img = idx;
+    lv_snprintf(lv_img_path, sizeof(lv_img_path), "%s/%s", basePath, image_files.at(idx));
+    return lv_img_path;
+}
 //页面加载
 void photo_win_loaded(SCREEN_LOAD_STAUS status){ 
      auto& photo_album = Photo_album::GetInstance();
@@ -58,7 +66,6 @@ void photo_win_loaded(SCREEN_LOAD_STAUS status){
         Setting::GetInstance().LoadOnlineImageUrl();
         if(!photo_album.hasInitial){
             photo_album.hasInitial = true;
-            photo_album.scan_image();
             lv_obj_add_event_cb(guider_ui.screen_photo_left_arrow, Photo_album::img_left_btn, LV_EVENT_CLICKED,NULL);
             lv_obj_add_event_cb(guider_ui.screen_photo_right_arrow, Photo_album::img_right_btn, LV_EVENT_CLICKED,NULL);
             lv_obj_add_event_cb(guider_ui.screen_photo_btn_web, Photo_album::img_play_choose, LV_EVENT_CLICKED,NULL);
@@ -66,11 +73,11 @@ void photo_win_loaded(SCREEN_LOAD_STAUS status){
             lv_obj_add_event_cb(guider_ui.screen_photo_btn_delete, Photo_album::img_delete, LV_EVENT_CLICKED,NULL);
             lv_obj_add_event_cb(guider_ui.screen_photo_view, Photo_album::online_img_click, LV_EVENT_LONG_PRESSED,&photo_album);
         }
+        photo_album.scan_image();
         lv_obj_clear_state(guider_ui.screen_photo_btn_web, LV_STATE_CHECKED);
         lv_obj_clear_state(guider_ui.screen_photo_btn_loop, LV_STATE_CHECKED);
     }else{
         photo_album.playLocal = true;
-        // 目录列表里几十个 String 占的是内部堆，退出页面就放掉，别一直攥着
         photo_album.release_file_list();
         if(carousel_timer != NULL)
         { 
@@ -78,8 +85,6 @@ void photo_win_loaded(SCREEN_LOAD_STAUS status){
             carousel_timer = NULL;
         }
         photo_album.stop_online();
-        // 下载任务可能还卡在 HTTP 里（超时 10s），此时 free 缓冲就是 use-after-free。
-        // release_online_buffers() 会先检查任务句柄，任务没退就什么都不做（缓冲留到下次复用）。
         photo_album.release_online_buffers();
     }
 }
@@ -113,7 +118,7 @@ void Photo_album::img_right_btn(lv_event_t *e){
         carousel_timer = NULL;
     }
     photo_album.nextBtnCheck = true;
-    if (photo_album.playLocal) {    
+    if (photo_album.playLocal) {
         photo_album.current_img++;
         photo_album.show_image();
     } else {
@@ -124,10 +129,10 @@ void Photo_album::lv_timer_img_carousel(lv_timer_t *timer){
     Photo_album* self = static_cast<Photo_album*>(lv_timer_get_user_data(timer));  //网络图片轮播
     if (self->playLocal) {        //本地图片轮播
         if (self->image_files.empty()) return;   //目录为空时不要走 at()，会 abort
-      // 构建完整路径（静态缓冲）
-        lv_snprintf(lv_img_path, sizeof(lv_img_path), "%s/%s", basePath, self->getNextImagePath());
-        if (lv_img_path[0] == '\0') return;
-        lv_image_set_src(guider_ui.screen_photo_view, lv_img_path);
+      // 构建完整路径（成员缓冲，常驻单例，LVGL 异步解码安全）
+        lv_snprintf(self->lv_img_path, sizeof(self->lv_img_path), "%s/%s", basePath, self->getNextImagePath());
+        if (self->lv_img_path[0] == '\0') return;
+        lv_image_set_src(guider_ui.screen_photo_view, self->lv_img_path);
     } else {
         if (!self->online_active_ || xSemaphoreTake(self->online_img_sem_, 0) != pdTRUE) return;
         self->display_online_image();
@@ -267,9 +272,6 @@ void Photo_album::stop_online() {
 }
 
 void Photo_album::release_online_buffers() {
-    // 下载任务还在写这两块内存时绝对不能释放，否则就是 use-after-free。
-    // 留到下次 start_online() 复用（allocate_online_buf 会判断非空直接返回），
-    // 或者下次退出页面时任务已经退了再释放。
     if (online_task_handle_ != nullptr) {
         printf("[PhotoAlbum] task alive, buffers kept\n");
         return;

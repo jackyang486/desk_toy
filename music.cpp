@@ -710,10 +710,7 @@ void Music_player::music_loop(SCREEN_LOAD_STAUS playerLoadStatus){
             music_timer = lv_timer_create(lv_timer_refresh_time, 50, NULL);
         }
             playEnable = true;
-            // 先把硬件音量拉满，响度只由软件音量（解码 PCM 缩放）决定
-            Setting::GetInstance().PreparePlaybackVolume();
             // 启动播放引擎：静态栈解码任务把 PCM 直接 Write 给 AudioDeviceEs8311
-            music_audio.set_volume((uint8_t)Setting::GetInstance().GetVolume());
             music_audio.begin();
             rgb_led_init();                 // WS2812B 响度灯（GPIO42）
             vTaskDelay(pdMS_TO_TICKS(50));
@@ -733,10 +730,6 @@ void Music_player::music_loop(SCREEN_LOAD_STAUS playerLoadStatus){
         musicTag.unload();
         music_audio.end();
         rgb_led_off();
-        // 播放页里调过的音量只落在解码 PCM 上，这里补写回 ES8311 硬件音量
-        Setting::GetInstance().FlushVolumeToHardware();
-        // 只 clear 不收容量：反复 clear/shrink_to_fit 会让内部堆每次进出页面都做一次
-        // "分配→释放"，留下无法合并的小洞；128 槽容量仅占 512B，留着更省事也更少碎片
         music_files.clear();
         lv_obj_clean(guider_ui.screen_music_list_music);
         list_swipe_registered = false;

@@ -35,13 +35,7 @@ public:
     uint32_t GetScreenTimeout() const;
 
     void ApplyBrightness();
-    void ApplyVolume();
-    // MP3/电台页：在 disable_i2s() 之前调用，把硬件音量拉满，让响度只由软件音量决定
-    void PreparePlaybackVolume();
-    // MP3/电台页：把滑块百分比映射成播放器的软件音量（音量条拖动时也走这里）
-    void ApplySoftwareVolume(Audio* player);
-    // 退出 MP3/电台页面、codec 归还给 AI_VOX 后调用，把播放期间改过的音量补写到硬件
-    void FlushVolumeToHardware();
+    void ApplyVolume();   // 统一写 ES8311 硬件寄存器（MP3/电台/AI 对话共用）
 
     void SaveSettings();
     void LoadSettings();
@@ -65,7 +59,6 @@ private:
     uint16_t volume_;
     uint32_t screen_timeout_ms_;
     String online_img_url_base_;
-    bool hw_volume_dirty_ = false;   // 播放页里音量只改到软件侧，退出时需补写硬件
 };
 
 #endif
