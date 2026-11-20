@@ -46,6 +46,7 @@ enum class BgMusicState { kIdle, kWaitListening, kPlaying };
 static volatile BgMusicState g_bg_music_state = BgMusicState::kIdle;
 static volatile uint16_t g_bg_music_idx = 0;   // 待播/正在播的曲库索引
 static char g_bg_music_name[64];               // 当前播放歌名（文件名，msg label 显示用）
+
 static volatile uint8_t g_chat_state_cache = static_cast<uint8_t>(ai_vox::ChatState::kIdle);  // 引擎状态缓存（StateChangedEvent 更新）
 
 static const std::vector<std::string> kEmotionOrder = {
@@ -186,10 +187,10 @@ void InitMcpTools() {
   );
 
   engine.AddMcpTool("self.music_player.play_song",
-                    "Play a song from the SD card music library by name. Use this when the user "
-                    "asks to play/listen to a song or some music. The song plays directly on the "
-                    "robot screen: the robot goes to sleep during playback and wakes up after "
-                    "the song finishes.",
+                    "Play a local song (music stored on the device / SD card) by name. Use this "
+                    "when the user asks to play/listen to a song, music, or local music. The "
+                    "song plays directly on the robot screen: the robot goes to sleep during "
+                    "playback and wakes up after the song finishes.",
                     {
                         {
                             "name",
@@ -603,7 +604,9 @@ static void set_msg_label(const char* text) {
 //（GetChatState 从 kSuspended 落回 kStandby：suspended_ 已清、wake_net 已重启）。
 // 否则 suspended_ 卡 true，之后服务器超时断连的回调被早退分支吞掉，
 // 唤醒词检测永远不重启 → "播放完歌后唤不醒"。
-static void ensure_engine_resumed() {
+// auto_wake_up：恢复成功后自动 Advance 重连 WS 进入 Listening，
+// 用户直接说话即可继续对话，无需再喊唤醒词。
+static void ensure_engine_resumed(bool auto_wake_up = true) {
   auto& engine = ai_vox::Engine::GetInstance();
   engine.Resume();
   const uint32_t t = millis();
@@ -613,6 +616,14 @@ static void ensure_engine_resumed() {
   }
   if (engine.GetChatState() != ai_vox::ChatState::kStandby) {
     engine.Resume();  // 重试一次
+    const uint32_t t2 = millis();
+    while (engine.GetChatState() != ai_vox::ChatState::kStandby &&
+           millis() - t2 < 500) {
+      vTaskDelay(pdMS_TO_TICKS(10));
+    }
+  }
+  if (auto_wake_up && engine.GetChatState() == ai_vox::ChatState::kStandby) {
+    engine.Advance();  // kStandby → ConnectWebSocket → Listening，自动续上对话
   }
 }
 
@@ -797,9 +808,9 @@ void chat_loop() {
           } else {
             engine.SendMcpCallResponse(mcp_tool_call_event->id, true);
             g_bg_music_idx = static_cast<uint16_t>(idx);
+            // 显示用：截掉最后的扩展名（文件名格式不统一，不做歌手前缀剥离）
             strncpy(g_bg_music_name, music_player.getMusicPaths().at(idx), sizeof(g_bg_music_name) - 1);
             g_bg_music_name[sizeof(g_bg_music_name) - 1] = '\0';
-            // 去掉扩展名（.mp3），label 只显示纯歌名
             char* dot = strrchr(g_bg_music_name, '.');
             if (dot != nullptr) *dot = '\0';
             g_bg_music_state = BgMusicState::kWaitListening;  // 等 TTS 播完（kListening）再睡眠开播
@@ -840,8 +851,11 @@ void chat_loop() {
           g_bg_music_state = BgMusicState::kIdle;
         }
       } else {
-        // Suspend 超时或解码任务创建失败：立即唤醒，不让 AI 一直沉睡
-        ensure_engine_resumed();
+        // 两种失败：Suspend 超时（引擎还在会话中，不动它，会话自然流转）；
+        // 或 begin 失败（引擎已睡 kSuspended，恢复唤醒并自动续上对话）
+        if (engine.GetChatState() == ai_vox::ChatState::kSuspended) {
+          ensure_engine_resumed();
+        }
         g_bg_music_state = BgMusicState::kIdle;
       }
     }
@@ -851,12 +865,15 @@ void chat_loop() {
     if (g_chat_state_cache == static_cast<uint8_t>(ai_vox::ChatState::kSpeaking) ||
         g_chat_state_cache == static_cast<uint8_t>(ai_vox::ChatState::kListening)) {
       music_audio.end();
-      ensure_engine_resumed();
+      // 引擎正在会话中自己流转（TTS/收音），只清 suspended_ 停歌即可，
+      // 不能 Advance（kSpeaking 下 Advance 会把 TTS 打断）
+      ensure_engine_resumed(false);
       g_bg_music_state = BgMusicState::kIdle;
     } else if (music_audio.take_eof()) {
-      // 播完（eof 含解码失败）：释放解码任务恢复 codec 默认配置，唤醒 AI
+      // 播完（eof 含解码失败）：释放解码任务恢复 codec 默认配置，
+      // 确认 ResumeInternal 真正跑完（wake_net 已重启）后 Advance 自动续上对话
       music_audio.end();
-      ensure_engine_resumed();  // 确认 ResumeInternal 真正跑完（wake_net 已重启），否则唤醒词失效
+      ensure_engine_resumed();
       g_bg_music_state = BgMusicState::kIdle;
     }
   }

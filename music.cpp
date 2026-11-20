@@ -99,7 +99,11 @@ static void lyric_page_create(void) {
     for (int i = 0; i < LYRIC_ROWS; i++) {
         lv_obj_t *l = lv_label_create(g_lyric_cont);
         lv_label_set_text(l, "");
-        lv_label_set_long_mode(l, LV_LABEL_LONG_CLIP);   // 歌词超宽时裁掉，不撑破容器
+        if(i== 4){
+            lv_label_set_long_mode(l, LV_LABEL_LONG_SCROLL_CIRCULAR);
+        }else{
+            lv_label_set_long_mode(l, LV_LABEL_LONG_CLIP);   // 歌词超宽时裁掉，不撑破容器
+        }
         lv_obj_set_pos(l, 0, kLyricRowStyle[i].y);
         lv_obj_set_size(l, LYRIC_ROW_W, kLyricRowStyle[i].h);
         lv_obj_set_style_text_font(l, &LYRIC_BASE_FONT, LV_PART_MAIN | LV_STATE_DEFAULT);
@@ -109,9 +113,6 @@ static void lyric_page_create(void) {
         lv_obj_set_style_pad_all(l, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
         lv_obj_set_style_bg_opa(l, 0, LV_PART_MAIN | LV_STATE_DEFAULT);
         if (kLyricRowStyle[i].scale != 256) {
-            // 缩放轴必须用**像素**（宽/2、行高/2），不能用 lv_pct()：
-            // pivot 是长度属性，百分比可能被当作原始数值解析（50px），导致缩放后
-            // 内容整体偏移、重绘区域跑到容器外，是切页闪屏的可疑来源之一。
             lv_obj_set_style_transform_pivot_x(l, LYRIC_ROW_W / 2, LV_PART_MAIN | LV_STATE_DEFAULT);
             lv_obj_set_style_transform_pivot_y(l, kLyricRowStyle[i].h / 2, LV_PART_MAIN | LV_STATE_DEFAULT);
             lv_obj_set_style_transform_scale(l, kLyricRowStyle[i].scale, LV_PART_MAIN | LV_STATE_DEFAULT);

@@ -33,7 +33,7 @@ void setup_scr_screen_home(lv_ui *ui)
     lv_obj_set_pos(ui->screen_home_img_lottie, 89, 157);
     lv_obj_set_size(ui->screen_home_img_lottie, 50, 50);
     lv_obj_add_flag(ui->screen_home_img_lottie, LV_OBJ_FLAG_CLICKABLE);
-    lv_image_set_src(ui->screen_home_img_lottie, &_photo_img2_RGB565A8_50x50);
+    lv_image_set_src(ui->screen_home_img_lottie, &_lottie_RGB565A8_50x50);
     lv_image_set_pivot(ui->screen_home_img_lottie, 50,50);
     lv_image_set_rotation(ui->screen_home_img_lottie, 0);
 
