@@ -100,7 +100,7 @@ static void lyric_page_create(void) {
         lv_obj_t *l = lv_label_create(g_lyric_cont);
         lv_label_set_text(l, "");
         if(i== 4){
-            lv_label_set_long_mode(l, LV_LABEL_LONG_SCROLL_CIRCULAR);
+            lv_label_set_long_mode(l, LV_LABEL_LONG_SCROLL);
         }else{
             lv_label_set_long_mode(l, LV_LABEL_LONG_CLIP);   // 歌词超宽时裁掉，不撑破容器
         }

@@ -23,6 +23,7 @@
 #include "photo_album.h"
 #include "music.h"
 #include "music_audio.h"
+#include "usb_camera.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "freertos/queue.h"
@@ -38,6 +39,7 @@ static volatile bool g_pending_next_photo = false;   // MCP 请求切下一张�
 static volatile bool g_vision_mode = false;          // true：识图模式中，表情被图片占用
 static volatile bool g_pending_vision_enter = false; // MCP 请求进入识图模式（LVGL 线程执行）
 static volatile bool g_pending_vision_exit = false;  // MCP 请求退出识图模式（LVGL 线程执行）
+static volatile bool g_pending_capture_show = false; // 拍照成功：机器人屏显示拍到照片（LVGL 线程执行）
 
 // ---- MCP 后台播歌（不进音乐页，机器人页直接播）----
 // 流程：MCP 回执 → AI TTS"好的" → 引擎进入 kListening（TTS 播完自动转）→ Suspend 睡眠
@@ -186,6 +188,20 @@ void InitMcpTools() {
                     }
   );
 
+  engine.AddMcpTool("self.camera.take_photo",
+                    "Take a photo with the USB camera and answer a question about what it sees. "
+                    "Use this when the user asks to take a photo and see what is in it, or asks "
+                    "\u201cwho is this?\u201d while pointing the camera at someone.",
+                    {
+                        {
+                            "question",
+                            ai_vox::ParamSchema<std::string>{
+                                .default_value = std::string("看看照片里有什么？如果有认得出的人物请说明是谁。"),
+                            },
+                        },
+                    }
+  );
+
   engine.AddMcpTool("self.music_player.play_song",
                     "Play a local song (music stored on the device / SD card) by name. Use this "
                     "when the user asks to play/listen to a song, music, or local music. The "
@@ -305,6 +321,18 @@ static void chat_ui_apply_timer_cb(lv_timer_t *timer) {
   if (g_pending_emotion_valid) {
     g_pending_emotion_valid = false;
     SetEmotion(g_pending_emotion);
+  }
+  if (g_pending_capture_show) {
+    g_pending_capture_show = false;
+    if (lv_scr_act() == guider_ui.screen_robot && guider_ui.screen_robot != nullptr) {
+      // 照片已在保存阶段缩放为竖版 230×320，与识图模式同一机制：背景图直接
+      // 显示（字面量常驻 rodata，LVGL 异步解码安全）。置 g_vision_mode 让
+      // 表情更新跳过，退出靠 self.photo_album.close 或离页复位
+      g_vision_mode = true;
+      lv_obj_set_style_bg_img_src(guider_ui.screen_robot, "S:/capture.jpg",
+                                  LV_PART_MAIN | LV_STATE_DEFAULT);
+      lv_obj_set_style_bg_image_opa(guider_ui.screen_robot, 255, LV_PART_MAIN | LV_STATE_DEFAULT);
+    }
   }
   if (g_pending_vision_enter) {
     g_pending_vision_enter = false;
@@ -787,6 +815,32 @@ void chat_loop() {
         } else {
           engine.SendMcpCallError(mcp_tool_call_event->id, answer);
         }
+      } else if ("self.camera.take_photo" == mcp_tool_call_event->name) {
+        // USB 摄像头拍照识图：拍一帧 JPEG 存 SD → 复用 VisionDescribeImage 上传。
+        // SD_MMC 与音乐解码任务互斥，播歌期间不能拍照
+        if (music_audio.is_active()) {
+          engine.SendMcpCallError(mcp_tool_call_event->id,
+                                  "正在播放音乐，无法使用摄像头，请先等歌曲播完");
+        } else {
+          const auto question_ptr = mcp_tool_call_event->param<std::string>("question");
+          std::string question =
+              (question_ptr != nullptr && !question_ptr->empty())
+                  ? *question_ptr
+                  : "看看照片里有什么？如果有认得出的人物请说明是谁。";
+          std::string err;
+          set_msg_label("拍照中...");
+          if (Usb_camera::GetInstance().capture_to_file("/capture.jpg", err)) {
+            g_pending_capture_show = true;  // LVGL 线程把拍到照片显示到机器人屏
+            std::string answer;
+            if (VisionDescribeImage(question, "/capture.jpg", answer)) {
+              engine.SendMcpCallResponse(mcp_tool_call_event->id, answer);
+            } else {
+              engine.SendMcpCallError(mcp_tool_call_event->id, answer);
+            }
+          } else {
+            engine.SendMcpCallError(mcp_tool_call_event->id, err);
+          }
+        }
       } else if ("self.music_player.play_song" == mcp_tool_call_event->name) {
         // 后台播歌：不进音乐页，AI 睡眠后直接在机器人页播，播完自动唤醒
         const auto name_ptr = mcp_tool_call_event->param<std::string>("name");
@@ -881,9 +935,19 @@ void chat_loop() {
   vTaskDelay(pdMS_TO_TICKS(10));
 }
 
+static volatile bool g_chat_task_exit = false;  // 离开聊天页：任务在安全点自删（省 20KB 栈）
+
 void xiaozhi_chat_task(void *pvParam){
   while(1) {
      chat_loop();
+     // 安全点自删：chat_loop 已完整返回（C++ 锁全部出作用域、无阻塞调用），
+     // 此时 vTaskDelete(NULL) 不会把任务删在持锁/网络中间。下次进页由
+     // robot_win_load 重建任务。
+     if (g_chat_task_exit) {
+       g_chat_task_exit = false;
+       g_chat_task_handle = nullptr;
+       vTaskDelete(NULL);
+     }
   }
 }
 
@@ -918,5 +982,25 @@ void robot_win_load(SCREEN_LOAD_STAUS loadstatus){
         screen_loaded = false;
         // 离开机器人页：屏幕对象即将销毁/重建，识图模式显示状态失效，复位防止下次进页卡在"表情不显示"
         g_vision_mode = false;
+        g_pending_vision_enter = false;
+        g_pending_vision_exit = false;
+        g_pending_capture_show = false;
+        g_pending_next_photo = false;
+        g_current_emotion.clear();   // 清空表情去重标记，下次进页强制重绘表情
+        // ---- 无后台任务占用时尽量释放资源（播歌/通话中离页则不动，资源归任务管）----
+        if (g_bg_music_state == BgMusicState::kIdle) {
+          // 1) 引擎睡眠：收掉输入/输出引擎（音频缓冲）、断 WS、停唤醒检测任务
+          auto& engine = ai_vox::Engine::GetInstance();
+          const auto st = engine.GetChatState();
+          if (st != ai_vox::ChatState::kIdle && st != ai_vox::ChatState::kSuspended &&
+              st != ai_vox::ChatState::kStandby) {
+            engine.Suspend();  // 会话进行中离页：中止并睡眠（异步入队，自然完成）
+          }
+          // 2) USB 摄像头整体释放：USB host 任务 + 全部 PSRAM 缓冲，OTG 归还
+          //    （U 盘模式恢复可用）；下次拍照重新枚举（约 5 秒）
+          Usb_camera::GetInstance().release();
+          // 3) 聊天任务在安全点自删：省 20KB 任务栈（MCP/拍照 HTTP 等都在此栈）
+          g_chat_task_exit = true;
+        }
    }
 }

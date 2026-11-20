@@ -24,6 +24,7 @@
 #include <SD_MMC.h>
 #include "usb_disk.h"
 #include "music_audio.h"
+#include "usb_camera.h"
 
 #if SOC_USB_OTG_SUPPORTED && CONFIG_TINYUSB_MSC_ENABLED
 
@@ -109,6 +110,9 @@ bool usb_disk_can_enter(void) {
     }
     if (music_audio.is_active()) {
         return false;   /* 音乐引擎正占用 SD（含暂停态：文件句柄还开着） */
+    }
+    if (Usb_camera::host_started()) {
+        return false;   /* USB OTG 已被摄像头 host 占用（UVC host 与 MSC device 互斥），重启后可用 */
     }
     return true;
 }
